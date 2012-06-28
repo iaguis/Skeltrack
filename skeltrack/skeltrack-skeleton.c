@@ -129,7 +129,6 @@ struct _SkeltrackSkeletonPrivate
   gboolean abort_dispatch_thread;
 
   gboolean enable_smoothing;
-  guint blank_frames;
   SmoothData smooth_data;
 };
 
