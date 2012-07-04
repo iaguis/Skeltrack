@@ -769,10 +769,7 @@ make_graph (SkeltrackSkeleton *self, GList **label_list)
 
   if (labels)
     {
-      priv->lowest_component = lowest_component_label->nodes;
-
       join_components_to_lowest (labels,
-                                 priv->lowest_component,
                                  lowest_component_label,
                                  priv->distance_threshold,
                                  priv->hands_minimum_distance);
@@ -809,6 +806,8 @@ make_graph (SkeltrackSkeleton *self, GList **label_list)
 
           current_label = g_list_next (current_label);
         }
+
+      priv->lowest_component = lowest_component_label->nodes;
     }
 
   *label_list = labels;
