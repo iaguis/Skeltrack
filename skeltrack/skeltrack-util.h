@@ -96,6 +96,16 @@ gboolean      dijkstra_to                      (GList *nodes,
                                                 gint *distances,
                                                 Node **previous);
 
+gboolean      dijkstra_to2                      (gint *edges,
+                                                 gint *weights,
+                                                 Node *source,
+                                                 Node *target,
+                                                 guint width,
+                                                 guint height,
+                                                 gint *distances,
+                                                 Node **previous,
+                                                 Node **node_matrix);
+
 void          convert_screen_coords_to_mm      (guint width,
                                                 guint height,
                                                 guint dimension_reduction,

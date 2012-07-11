@@ -415,6 +415,149 @@ create_new_dist_matrix (gint matrix_size)
   return distances;
 }
 
+gint
+mask_array_empty (guint *mask_array, guint size)
+{
+  guint i;
+
+  for (i=0; i < size; i++)
+    {
+      if (mask_array[i] == 1)
+        return 0;
+    }
+
+  return 1;
+}
+
+gint
+dijkstra_to_opencl_structures (gint *edges,
+                               gint *weights,
+                               guint source_i,
+                               guint source_j,
+                               guint target_i,
+                               guint target_j,
+                               gint *costs,
+                               gint *previous,
+                               guint width,
+                               guint height)
+{
+  guint i, j, size, *mask_array;
+
+  size = width*height;
+  mask_array = g_slice_alloc0 (size * sizeof (guint));
+
+  for (i=0; i < width; i++)
+  {
+    for (j=0; j < height; j++)
+      {
+        if (previous)
+          {
+            previous[j*width + i] = -1;
+          }
+        if (i==source_i && j==source_j)
+          {
+            costs[j*width + i] = 0;
+            mask_array[j*width + i] = 1;
+          }
+        else
+          {
+            mask_array[j*width + i] = 0;
+          }
+      }
+  }
+
+  while (!mask_array_empty (mask_array, size))
+    {
+      gint tid;
+      for (tid = 0; tid < size; tid++)
+        {
+          if (mask_array[tid] != 0)
+            {
+              mask_array[tid] = 0;
+
+              gint edgeStart = tid * 8;
+              gint edge;
+              for (edge=edgeStart; ((edge - edgeStart) < 8) && (edges[edge] !=
+                    -1); edge++)
+                {
+                  gint nid = edges[edge];
+                  if (costs[nid] > (costs[tid] + weights[edge]) ||
+                      costs[nid] == -1)
+                    {
+                      costs[nid] = costs[tid] + weights[edge];
+                      if (previous)
+                        {
+                          previous[nid] = tid;
+                        }
+                      mask_array[nid] = 1;
+                    }
+                  if (target_i != -1 && target_j != -1 &&
+                      (target_j * width + target_i) == nid)
+                    {
+                      return 1;
+                    }
+                }
+            }
+        }
+    }
+
+  g_slice_free1 (size * sizeof (guint), mask_array);
+
+  return 0;
+}
+
+gboolean
+dijkstra_to2 (gint *edges,
+              gint *weights,
+              Node *source,
+              Node *target,
+              guint width,
+              guint height,
+              gint *distances,
+              Node **previous,
+              Node **node_matrix)
+  {
+    guint i, j;
+    gint target_i, target_j, idx, result;
+    gint *previous_index;
+
+    previous_index = g_slice_alloc0 (width * height * sizeof (gint));
+
+    if (target)
+      {
+        target_i = target->i;
+        target_j = target->j;
+      }
+    else
+      {
+        target_i = -1;
+        target_j = -1;
+      }
+
+
+    result = dijkstra_to_opencl_structures (edges, weights, source->i, source->j, target_i,
+        target_j, distances, previous_index, width, height);
+
+    if (previous)
+      {
+        for (i=0; i < width; i++)
+          {
+            for (j=0; j < height; j++)
+              {
+                if ((idx = previous_index[j*width + i]) != -1)
+                  {
+                    previous[j*width + i] = node_matrix[idx];
+                  }
+              }
+          }
+      }
+
+    g_slice_free1 (width * height * sizeof (gint), previous_index);
+
+    return (result? TRUE: FALSE);
+}
+
+
 gboolean
 dijkstra_to (GList *nodes, Node *source, Node *target,
              gint width, gint height,

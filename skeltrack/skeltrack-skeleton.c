@@ -78,6 +78,8 @@
 #define SMOOTHING_FACTOR_DEFAULT .5
 #define ENABLE_SMOOTHING_DEFAULT TRUE
 
+#define NEIGHBOR_SIZE 8
+
 /* private data */
 struct _SkeltrackSkeletonPrivate
 {
@@ -92,6 +94,10 @@ struct _SkeltrackSkeletonPrivate
   Node **node_matrix;
   gint  *distances_matrix;
   GList *lowest_component;
+
+  /* data types for OpenCL */
+  gint *edge_matrix;
+  gint *weight_matrix;
 
   guint16 dimension_reduction;
   guint16 distance_threshold;
@@ -400,6 +406,30 @@ skeltrack_skeleton_init (SkeltrackSkeleton *self)
 }
 
 static void
+init_opencl_structures (SkeltrackSkeleton *self)
+{
+  guint i, size;
+  SkeltrackSkeletonPrivate *priv;
+
+  priv = self->priv;
+  size = priv->buffer_width * priv->buffer_height;
+
+  priv->edge_matrix = g_slice_alloc (size * NEIGHBOR_SIZE * sizeof (gint));
+
+  for (i=0; i < (size * NEIGHBOR_SIZE); i++)
+    {
+      priv->edge_matrix[i] = -1;
+    }
+
+  priv->weight_matrix = g_slice_alloc (size * NEIGHBOR_SIZE * sizeof (gint));
+
+  for (i=0; i < (size * NEIGHBOR_SIZE); i++)
+    {
+      priv->weight_matrix[i] = -1;
+    }
+}
+
+static void
 skeltrack_skeleton_dispose (GObject *obj)
 {
   SkeltrackSkeleton *self = SKELTRACK_SKELETON (obj);
@@ -629,6 +659,20 @@ make_graph (SkeltrackSkeleton *self, GList **label_list)
               width * height * sizeof (Node *));
     }
 
+  if ((priv->edge_matrix == NULL) && (priv->weight_matrix == NULL))
+    {
+      init_opencl_structures (self);
+    }
+  else
+    {
+      memset (self->priv->edge_matrix,
+              -1,
+              width * height * NEIGHBOR_SIZE * sizeof (gint));
+      memset (self->priv->weight_matrix,
+              -1,
+              width * height * NEIGHBOR_SIZE * sizeof (gint));
+    }
+
   for (i = 0; i < width; i++)
     {
       for (j = 0; j < height; j++)
@@ -812,6 +856,37 @@ make_graph (SkeltrackSkeleton *self, GList **label_list)
 
   *label_list = labels;
 
+  gint l, m;
+
+  /* Copy graph into OpenCL data structures. Assume 8 neighbors */
+  for (m=0; m < priv->buffer_width; m++)
+    {
+      for (l=0; l < priv->buffer_height; l++)
+        {
+          if ((node = priv->node_matrix[l * priv->buffer_width + m]) != NULL)
+            {
+              GList *current_neighbor;
+              if (node->neighbors)
+                {
+                  current_neighbor = g_list_first (node->neighbors);
+                }
+              gint index = 0;
+              while (current_neighbor != NULL)
+                {
+                  Node *n = current_neighbor->data;
+                  gint distance = get_distance (n, node);
+                  priv->edge_matrix[(l * priv->buffer_width + m) *
+                    NEIGHBOR_SIZE + index] = n->j * priv->buffer_width + n->i;
+                  priv->weight_matrix[(l * priv->buffer_width + m) *
+                    NEIGHBOR_SIZE + index] = distance;
+
+                  current_neighbor = g_list_next (current_neighbor);
+                  index++;
+                }
+            }
+        }
+    }
+
   return nodes;
 }
 
@@ -939,13 +1014,23 @@ get_extremas (SkeltrackSkeleton *self, Node *centroid)
        source != NULL && nr_nodes > 0;
        nr_nodes--)
     {
-      dijkstra_to (priv->graph,
+      /*dijkstra_to (priv->graph,
+                    source,
+                    NULL,
+                    priv->buffer_width,
+                    priv->buffer_height,
+                    priv->distances_matrix,
+                    NULL);*/
+
+      dijkstra_to2 (priv->edge_matrix,
+                   priv->weight_matrix,
                    source,
                    NULL,
                    priv->buffer_width,
                    priv->buffer_height,
                    priv->distances_matrix,
-                   NULL);
+                   NULL,
+                   priv->node_matrix);
 
       node = get_longer_distance (self, priv->distances_matrix);
       if (node == NULL)
@@ -1192,39 +1277,78 @@ set_left_and_right_from_extremas (SkeltrackSkeleton *self,
   previous_right_b = g_slice_alloc0 (matrix_size * sizeof (Node *));
 
   dist_left_a = create_new_dist_matrix(matrix_size);
-  dijkstra_to (self->priv->graph,
+  /*dijkstra_to (self->priv->graph,
                left_shoulder,
                ext_a,
                width,
                height,
                dist_left_a,
-               previous_left_a);
+               previous_left_a);*/
+  dijkstra_to2 (self->priv->edge_matrix,
+                self->priv->weight_matrix,
+                left_shoulder,
+                ext_a,
+                width,
+                height,
+                dist_left_a,
+                previous_left_a,
+                self->priv->node_matrix);
 
   dist_left_b = create_new_dist_matrix(matrix_size);
-  dijkstra_to (self->priv->graph,
+  /*dijkstra_to (self->priv->graph,
                left_shoulder,
                ext_b,
                width,
                height,
                dist_left_b,
-               previous_left_b);
+               previous_left_b);*/
+  dijkstra_to2 (self->priv->edge_matrix,
+                self->priv->weight_matrix,
+                left_shoulder,
+                ext_b,
+                width,
+                height,
+                dist_left_b,
+                previous_left_b,
+                self->priv->node_matrix);
+
 
   dist_right_a = create_new_dist_matrix(matrix_size);
-  dijkstra_to (self->priv->graph,
+  /*dijkstra_to (self->priv->graph,
                right_shoulder,
                ext_a,
                width,
                height,
-               dist_right_a, previous_right_a);
+               dist_right_a, previous_right_a);*/
+  dijkstra_to2 (self->priv->edge_matrix,
+                self->priv->weight_matrix,
+                right_shoulder,
+                ext_a,
+                width,
+                height,
+                dist_right_a,
+                previous_right_a,
+                self->priv->node_matrix);
+
 
   dist_right_b = create_new_dist_matrix(matrix_size);
-  dijkstra_to (self->priv->graph,
+/*  dijkstra_to (self->priv->graph,
                right_shoulder,
                ext_b,
                width,
                height,
                dist_right_b,
-               previous_right_b);
+               previous_right_b);*/
+  dijkstra_to2 (self->priv->edge_matrix,
+                self->priv->weight_matrix,
+                right_shoulder,
+                ext_b,
+                width,
+                height,
+                dist_right_b,
+                previous_right_b,
+                self->priv->node_matrix);
+
 
   total_dist_left_a = dist_left_a[ext_a->j * width + ext_a->i];
   total_dist_right_a = dist_right_a[ext_a->j * width + ext_a->i];
@@ -1512,6 +1636,16 @@ clean_tracking_resources (SkeltrackSkeleton *self)
                  self->priv->buffer_height * sizeof (Node *),
                  self->priv->node_matrix);
   self->priv->node_matrix = NULL;
+
+  g_slice_free1 (self->priv->buffer_width * NEIGHBOR_SIZE *
+                 self->priv->buffer_height * sizeof (gint),
+                 self->priv->edge_matrix);
+  self->priv->edge_matrix = NULL;
+
+  g_slice_free1 (self->priv->buffer_width * NEIGHBOR_SIZE *
+                self->priv->buffer_height * sizeof (gint),
+                self->priv->weight_matrix);
+  self->priv->weight_matrix = NULL;
 }
 
 /* public methods */
