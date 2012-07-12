@@ -1014,23 +1014,15 @@ get_extremas (SkeltrackSkeleton *self, Node *centroid)
        source != NULL && nr_nodes > 0;
        nr_nodes--)
     {
-      /*dijkstra_to (priv->graph,
+      dijkstra_to2 (priv->edge_matrix,
+                    priv->weight_matrix,
                     source,
                     NULL,
                     priv->buffer_width,
                     priv->buffer_height,
                     priv->distances_matrix,
-                    NULL);*/
-
-      dijkstra_to2 (priv->edge_matrix,
-                   priv->weight_matrix,
-                   source,
-                   NULL,
-                   priv->buffer_width,
-                   priv->buffer_height,
-                   priv->distances_matrix,
-                   NULL,
-                   priv->node_matrix);
+                    NULL,
+                    priv->node_matrix);
 
       node = get_longer_distance (self, priv->distances_matrix);
       if (node == NULL)
@@ -1277,13 +1269,6 @@ set_left_and_right_from_extremas (SkeltrackSkeleton *self,
   previous_right_b = g_slice_alloc0 (matrix_size * sizeof (Node *));
 
   dist_left_a = create_new_dist_matrix(matrix_size);
-  /*dijkstra_to (self->priv->graph,
-               left_shoulder,
-               ext_a,
-               width,
-               height,
-               dist_left_a,
-               previous_left_a);*/
   dijkstra_to2 (self->priv->edge_matrix,
                 self->priv->weight_matrix,
                 left_shoulder,
@@ -1295,13 +1280,6 @@ set_left_and_right_from_extremas (SkeltrackSkeleton *self,
                 self->priv->node_matrix);
 
   dist_left_b = create_new_dist_matrix(matrix_size);
-  /*dijkstra_to (self->priv->graph,
-               left_shoulder,
-               ext_b,
-               width,
-               height,
-               dist_left_b,
-               previous_left_b);*/
   dijkstra_to2 (self->priv->edge_matrix,
                 self->priv->weight_matrix,
                 left_shoulder,
@@ -1314,12 +1292,6 @@ set_left_and_right_from_extremas (SkeltrackSkeleton *self,
 
 
   dist_right_a = create_new_dist_matrix(matrix_size);
-  /*dijkstra_to (self->priv->graph,
-               right_shoulder,
-               ext_a,
-               width,
-               height,
-               dist_right_a, previous_right_a);*/
   dijkstra_to2 (self->priv->edge_matrix,
                 self->priv->weight_matrix,
                 right_shoulder,
@@ -1332,13 +1304,6 @@ set_left_and_right_from_extremas (SkeltrackSkeleton *self,
 
 
   dist_right_b = create_new_dist_matrix(matrix_size);
-/*  dijkstra_to (self->priv->graph,
-               right_shoulder,
-               ext_b,
-               width,
-               height,
-               dist_right_b,
-               previous_right_b);*/
   dijkstra_to2 (self->priv->edge_matrix,
                 self->priv->weight_matrix,
                 right_shoulder,
