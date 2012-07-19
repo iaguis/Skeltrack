@@ -914,6 +914,9 @@ make_graph (SkeltrackSkeleton *self, GList **label_list)
         }
     }
 
+  ocl_dijkstra_send_graph(priv->dijkstra_data, priv->buffer_width *
+      priv->buffer_height);
+
   return nodes;
 }
 

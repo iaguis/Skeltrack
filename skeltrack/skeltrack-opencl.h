@@ -43,3 +43,5 @@ gboolean    ocl_dijkstra_to             (oclDijkstraData         *data,
 void        ocl_init                    (oclDijkstraData         *data,
                                          gint                     matrix_size);
 
+void        ocl_dijkstra_send_graph     (oclDijkstraData         *data,
+                                         gint                     matrix_size);

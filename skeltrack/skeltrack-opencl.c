@@ -408,6 +408,23 @@ gint round_worksize_up(gint group_size, gint global_size)
     }
 }
 
+void
+ocl_dijkstra_send_graph(oclDijkstraData *data, gint matrix_size)
+{
+  cl_uint err_num;
+
+  err_num = CL_SUCCESS;
+
+  err_num = clEnqueueWriteBuffer (data->command_queue, data->edge_matrix_device,
+      CL_FALSE, 0, sizeof(gint) * matrix_size * NEIGHBOR_SIZE,
+      data->edge_matrix, 0, NULL, NULL);
+  check_error(err_num, CL_SUCCESS);
+
+  err_num = clEnqueueWriteBuffer (data->command_queue, data->weight_matrix_device,
+      CL_FALSE, 0, sizeof(gint) * matrix_size * NEIGHBOR_SIZE,
+      data->weight_matrix, 0, NULL, NULL);
+  check_error(err_num, CL_SUCCESS);
+}
 
 gboolean
 ocl_dijkstra_to (oclDijkstraData *data,
@@ -472,7 +489,6 @@ ocl_dijkstra_to (oclDijkstraData *data,
   check_error (err_num, CL_SUCCESS);
 
   /* Copy new data to device */
-  /* FIXME maybe {edge, weight}_matrix is not needed here? */
   err_num = clEnqueueWriteBuffer (data->command_queue,
       data->distance_matrix_device, CL_FALSE, 0, sizeof (gint) * matrix_size, distance_matrix,
       0, NULL, NULL);
@@ -480,14 +496,6 @@ ocl_dijkstra_to (oclDijkstraData *data,
   err_num = clEnqueueWriteBuffer (data->command_queue,
       data->updating_distance_matrix_device, CL_FALSE, 0, sizeof (gint) * matrix_size, distance_matrix,
       0, NULL, NULL);
-
-  err_num = clEnqueueWriteBuffer (data->command_queue, data->edge_matrix_device,
-      CL_FALSE, 0, sizeof (gint) * matrix_size * 8, data->edge_matrix, 0, NULL,
-      NULL);
-
-  err_num = clEnqueueWriteBuffer (data->command_queue, data->weight_matrix_device,
-      CL_FALSE, 0, sizeof (gint) * matrix_size * 8, data->weight_matrix, 0,
-      NULL, NULL);
 
   err_num = clEnqueueNDRangeKernel (data->command_queue, data->initialize_mask_kernel, 1, NULL,
   &global_worksize, &local_worksize, 0, NULL, NULL);
