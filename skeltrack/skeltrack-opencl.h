@@ -31,11 +31,15 @@ typedef struct {
   cl_kernel dijkstra_kernel2;
 } oclDijkstraData;
 
-gboolean    ocl_dijkstra_to    (oclDijkstraData         *data,
-                                Node                    *source,
-                                Node                    *target,
-                                guint                    width,
-                                guint                    height,
-                                gint                    *distance_matrix,
-                                Node                   **previous,
-                                Node                   **node_matrix);
+gboolean    ocl_dijkstra_to             (oclDijkstraData         *data,
+                                         Node                    *source,
+                                         Node                    *target,
+                                         guint                    width,
+                                         guint                    height,
+                                         gint                    *distance_matrix,
+                                         Node                   **previous,
+                                         Node                   **node_matrix);
+
+void        ocl_init                    (oclDijkstraData         *data,
+                                         gint                     matrix_size);
+

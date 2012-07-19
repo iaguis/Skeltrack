@@ -452,6 +452,8 @@ init_opencl_structures (SkeltrackSkeleton *self)
     {
       priv->dijkstra_data->weight_matrix[i] = -1;
     }
+
+  ocl_init(priv->dijkstra_data, size);
 }
 
 static void

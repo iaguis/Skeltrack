@@ -324,9 +324,8 @@ ocl_set_up_context (cl_device_type device_type,
 }
 
 void
-assign_opencl_structures (oclDijkstraData *data,
-                          gint matrix_size,
-                          guint source_vertex)
+ocl_init (oclDijkstraData *data,
+                          gint matrix_size)
 {
   if (data->platform == NULL)
     {
@@ -353,11 +352,11 @@ assign_opencl_structures (oclDijkstraData *data,
 
       /* Device buffers creation */
       data->edge_matrix_device = clCreateBuffer (data->context, CL_MEM_READ_ONLY, sizeof (gint)
-          * matrix_size * 8, NULL, &err_num);
+          * matrix_size * NEIGHBOR_SIZE, NULL, &err_num);
       check_error (err_num, CL_SUCCESS);
 
       data->weight_matrix_device = clCreateBuffer (data->context, CL_MEM_READ_ONLY,
-          sizeof (gint) * matrix_size * 8, NULL, &err_num);
+          sizeof (gint) * matrix_size * NEIGHBOR_SIZE, NULL, &err_num);
       check_error (err_num, CL_SUCCESS);
 
       data->mask_matrix_device = clCreateBuffer (data->context, CL_MEM_READ_WRITE, sizeof (gint)
@@ -430,8 +429,6 @@ ocl_dijkstra_to (oclDijkstraData *data,
 
   source_vertex = source->j * width + source->i;
   matrix_size = width * height;
-
-  assign_opencl_structures (data, matrix_size, source_vertex);
 
   /* Get maximum workgroup size */
   err_num = clGetDeviceInfo(data->device, CL_DEVICE_MAX_WORK_GROUP_SIZE,
