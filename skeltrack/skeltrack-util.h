@@ -26,6 +26,8 @@
 #include <glib.h>
 #include "skeltrack-joint.h"
 
+#define NEIGHBOR_SIZE 8
+
 typedef struct _Label Label;
 typedef struct _Node Node;
 

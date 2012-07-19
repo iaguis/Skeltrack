@@ -85,8 +85,6 @@
 #define SMOOTHING_FACTOR_DEFAULT .25
 #define ENABLE_SMOOTHING_DEFAULT TRUE
 
-#define NEIGHBOR_SIZE 8
-
 /* private data */
 struct _SkeltrackSkeletonPrivate
 {
