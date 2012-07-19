@@ -438,7 +438,6 @@ init_opencl_structures (SkeltrackSkeleton *self)
   priv->dijkstra_data->updating_distance_matrix_device = NULL;
   priv->dijkstra_data->previous_matrix_device = NULL;
   priv->dijkstra_data->initialize_mask_kernel = NULL;
-  priv->dijkstra_data->set_longer_node_kernel = NULL;
   priv->dijkstra_data->dijkstra_kernel1 = NULL;
   priv->dijkstra_data->dijkstra_kernel2 = NULL;
 

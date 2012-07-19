@@ -27,7 +27,6 @@ typedef struct {
   cl_mem previous_matrix_device;
 
   cl_kernel initialize_mask_kernel;
-  cl_kernel set_longer_node_kernel;
   cl_kernel dijkstra_kernel1;
   cl_kernel dijkstra_kernel2;
 } oclDijkstraData;
