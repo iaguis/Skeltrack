@@ -147,6 +147,8 @@ static void     skeltrack_skeleton_get_property       (GObject *obj,
                                                        GParamSpec *pspec);
 
 
+static void     clean_tracking_resources              (SkeltrackSkeleton *self);
+
 G_DEFINE_TYPE (SkeltrackSkeleton, skeltrack_skeleton, G_TYPE_OBJECT)
 
 static void
@@ -414,17 +416,13 @@ skeltrack_skeleton_dispose (GObject *obj)
 
       self->priv->dispatch_thread = NULL;
 
-      g_slice_free1 (self->priv->buffer_width *
-                     self->priv->buffer_height * sizeof (gint),
-                     self->priv->distances_matrix);
-      self->priv->distances_matrix = NULL;
-
-      g_slice_free1 (self->priv->buffer_width *
-                     self->priv->buffer_height * sizeof (Node *),
-                     self->priv->node_matrix);
-      self->priv->node_matrix = NULL;
+      clean_tracking_resources (self);
 
       g_mutex_unlock (self->priv->dispatch_mutex);
+    }
+  else
+    {
+      clean_tracking_resources (self);
     }
 
   skeltrack_joint_list_free (self->priv->smooth_data.smoothed_joints);
