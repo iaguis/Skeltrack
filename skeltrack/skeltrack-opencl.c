@@ -324,8 +324,99 @@ ocl_set_up_context (cl_device_type device_type,
 }
 
 void
-ocl_init (oclDijkstraData *data,
-                          gint matrix_size)
+ocl_init_dijkstra (oclData *data,
+                   gint matrix_size)
+{
+  cl_int err_num;
+
+  /* Load an build OpenCL program */
+  /* FIXME hardcoded file name */
+  data->program = load_and_build_program (data->context, data->device,
+      "/home/iaguis/igalia/Skeltrack/skeltrack/dijkstra.cl");
+
+  /* Device buffers creation */
+  data->mask_matrix_device = clCreateBuffer (data->context, CL_MEM_READ_WRITE, sizeof (gint)
+      * matrix_size, NULL, &err_num);
+  check_error (err_num, CL_SUCCESS);
+
+  data->distance_matrix_device = clCreateBuffer (data->context, CL_MEM_READ_WRITE, sizeof (gint)
+      * matrix_size, NULL, &err_num);
+  check_error (err_num, CL_SUCCESS);
+
+  data->updating_distance_matrix_device = clCreateBuffer (data->context, CL_MEM_READ_WRITE, sizeof (gint)
+      * matrix_size, NULL, &err_num);
+  check_error (err_num, CL_SUCCESS);
+
+  data->previous_matrix_device = clCreateBuffer (data->context, CL_MEM_READ_WRITE,
+      sizeof (gint) * matrix_size, NULL, &err_num);
+  check_error (err_num, CL_SUCCESS);
+
+  data->mask_matrix = g_slice_alloc (matrix_size * sizeof (gint));
+  data->previous_matrix = g_slice_alloc (matrix_size * sizeof (gint));
+
+  /* Create kernels */
+  data->dijkstra_kernel1 = clCreateKernel (data->program, "dijkstra1", &err_num);
+  check_error (err_num, CL_SUCCESS);
+
+  data->dijkstra_kernel2 = clCreateKernel (data->program, "dijkstra2", &err_num);
+  check_error (err_num, CL_SUCCESS);
+
+  data->initialize_mask_kernel = clCreateKernel (data->program, "initialize_mask",
+  &err_num);
+  check_error (err_num, CL_SUCCESS);
+
+  err_num |= clSetKernelArg (data->initialize_mask_kernel, 0, sizeof (cl_mem),
+      &(data->mask_matrix_device));
+}
+
+void
+ocl_init_labeling (oclData *data,
+                   gint matrix_size)
+{
+  cl_int err_num;
+
+  /* Load an build OpenCL program */
+  /* FIXME hardcoded file name */
+  data->program = load_and_build_program (data->context, data->device,
+      "/home/iaguis/igalia/Skeltrack/skeltrack/ccl.cl");
+
+  /* Device buffers creation */
+  data->buffer_matrix_device = clCreateBuffer (data->context,
+      CL_MEM_READ_ONLY, sizeof (guint16) * matrix_size, NULL, &err_num);
+  check_error (err_num, CL_SUCCESS);
+
+  data->labels_matrix_device = clCreateBuffer (data->context,
+      CL_MEM_READ_WRITE, sizeof (guint) * matrix_size, NULL, &err_num);
+  check_error (err_num, CL_SUCCESS);
+
+  data->mD_device = clCreateBuffer (data->context, CL_MEM_READ_WRITE,
+      sizeof (gint), NULL, &err_num);
+  check_error (err_num, CL_SUCCESS);
+
+  data->edge_matrix_device = clCreateBuffer (data->context,
+      CL_MEM_READ_WRITE, sizeof (gint) * matrix_size * NEIGHBOR_SIZE, NULL, &err_num);
+  check_error (err_num, CL_SUCCESS);
+
+  data->weight_matrix_device = clCreateBuffer (data->context,
+      CL_MEM_READ_WRITE, sizeof (gint) * matrix_size * NEIGHBOR_SIZE, NULL, &err_num);
+  check_error (err_num, CL_SUCCESS);
+
+  /* Create kernels */
+  data->initialize_graph_kernel = clCreateKernel (data->program,
+      "initialize_graph", &err_num);
+  check_error (err_num, CL_SUCCESS);
+
+  data->mesh_kernel = clCreateKernel (data->program, "mesh_kernel", &err_num);
+  check_error (err_num, CL_SUCCESS);
+
+  data->make_graph_kernel = clCreateKernel (data->program, "make_graph",
+      &err_num);
+  check_error (err_num, CL_SUCCESS);
+}
+
+void
+ocl_init (oclData *data,
+          gint matrix_size)
 {
   if (data->platform == NULL)
     {
@@ -345,56 +436,13 @@ ocl_init (oclDijkstraData *data,
       err_num = ocl_set_up_context (CL_DEVICE_TYPE_CPU, &(data->platform), &(data->context), &(data->device), &(data->command_queue));
       check_error (err_num, CL_SUCCESS);
 
-      /* Load an build OpenCL program */
-      /* FIXME hardcoded file name */
-      data->program = load_and_build_program (data->context, data->device,
-          "/home/iaguis/igalia/Skeltrack/skeltrack/dijkstra.cl");
+      ocl_init_labeling (data, matrix_size);
 
-      /* Device buffers creation */
-      data->edge_matrix_device = clCreateBuffer (data->context, CL_MEM_READ_ONLY, sizeof (gint)
-          * matrix_size * NEIGHBOR_SIZE, NULL, &err_num);
-      check_error (err_num, CL_SUCCESS);
-
-      data->weight_matrix_device = clCreateBuffer (data->context, CL_MEM_READ_ONLY,
-          sizeof (gint) * matrix_size * NEIGHBOR_SIZE, NULL, &err_num);
-      check_error (err_num, CL_SUCCESS);
-
-      data->mask_matrix_device = clCreateBuffer (data->context, CL_MEM_READ_WRITE, sizeof (gint)
-          * matrix_size, NULL, &err_num);
-      check_error (err_num, CL_SUCCESS);
-
-      data->distance_matrix_device = clCreateBuffer (data->context, CL_MEM_READ_WRITE, sizeof (gint)
-          * matrix_size, NULL, &err_num);
-      check_error (err_num, CL_SUCCESS);
-
-      data->updating_distance_matrix_device = clCreateBuffer (data->context, CL_MEM_READ_WRITE, sizeof (gint)
-          * matrix_size, NULL, &err_num);
-      check_error (err_num, CL_SUCCESS);
-
-      data->previous_matrix_device = clCreateBuffer (data->context, CL_MEM_READ_WRITE,
-          sizeof (gint) * matrix_size, NULL, &err_num);
-      check_error (err_num, CL_SUCCESS);
-
-      data->mask_matrix = g_slice_alloc (matrix_size * sizeof (gint));
-      data->previous_matrix = g_slice_alloc (matrix_size * sizeof (gint));
-
-      /* Create kernels */
-      data->dijkstra_kernel1 = clCreateKernel (data->program, "dijkstra1", &err_num);
-      check_error (err_num, CL_SUCCESS);
-
-      data->dijkstra_kernel2 = clCreateKernel (data->program, "dijkstra2", &err_num);
-      check_error (err_num, CL_SUCCESS);
-
-      data->initialize_mask_kernel = clCreateKernel (data->program, "initialize_mask",
-      &err_num);
-      check_error (err_num, CL_SUCCESS);
-
-      err_num |= clSetKernelArg (data->initialize_mask_kernel, 0, sizeof (cl_mem),
-          &(data->mask_matrix_device));
+      ocl_init_dijkstra (data, matrix_size);
     }
 }
 
-gint round_worksize_up(gint group_size, gint global_size)
+gint round_worksize_up (gint group_size, gint global_size)
 {
   gint remainder = global_size % group_size;
 
@@ -408,26 +456,8 @@ gint round_worksize_up(gint group_size, gint global_size)
     }
 }
 
-void
-ocl_dijkstra_send_graph(oclDijkstraData *data, gint matrix_size)
-{
-  cl_uint err_num;
-
-  err_num = CL_SUCCESS;
-
-  err_num = clEnqueueWriteBuffer (data->command_queue, data->edge_matrix_device,
-      CL_FALSE, 0, sizeof(gint) * matrix_size * NEIGHBOR_SIZE,
-      data->edge_matrix, 0, NULL, NULL);
-  check_error(err_num, CL_SUCCESS);
-
-  err_num = clEnqueueWriteBuffer (data->command_queue, data->weight_matrix_device,
-      CL_FALSE, 0, sizeof(gint) * matrix_size * NEIGHBOR_SIZE,
-      data->weight_matrix, 0, NULL, NULL);
-  check_error(err_num, CL_SUCCESS);
-}
-
 gboolean
-ocl_dijkstra_to (oclDijkstraData *data,
+ocl_dijkstra_to (oclData *data,
                  Node *source,
                  Node *target,
                  guint width,
@@ -448,13 +478,13 @@ ocl_dijkstra_to (oclDijkstraData *data,
   matrix_size = width * height;
 
   /* Get maximum workgroup size */
-  err_num = clGetDeviceInfo(data->device, CL_DEVICE_MAX_WORK_GROUP_SIZE,
-      sizeof(size_t), &max_workgroup_size, NULL);
-  check_error(err_num, CL_SUCCESS);
+  err_num = clGetDeviceInfo (data->device, CL_DEVICE_MAX_WORK_GROUP_SIZE,
+      sizeof (size_t), &max_workgroup_size, NULL);
+  check_error (err_num, CL_SUCCESS);
 
   /* Set worksizes */
   local_worksize = max_workgroup_size;
-  global_worksize = round_worksize_up(local_worksize, matrix_size);
+  global_worksize = round_worksize_up (local_worksize, matrix_size);
 
   distance_matrix[source_vertex] = 0;
 
@@ -539,10 +569,153 @@ ocl_dijkstra_to (oclDijkstraData *data,
 
   if (previous)
     {
-      for (i=0; i<matrix_size; i++)
+      for (i = 0; i < matrix_size; i++)
         {
           previous[i] = node_matrix[(data->previous_matrix)[i]];
         }
     }
   return FALSE;
+}
+
+void
+ocl_ccl (oclData *data,
+         guint16 *buffer,
+         gint width,
+         gint height)
+{
+  gint size;
+  cl_int err_num;
+  size_t local_worksize[2], global_worksize[2];
+  size_t init_worksize;
+  cl_event read_done;
+
+  size = width * height;
+
+  data->labels_matrix = g_slice_alloc (size * sizeof (guint));
+  *(data->mD) = 0;
+
+  local_worksize[0] = 16;
+  local_worksize[1] = 16;
+  global_worksize[0] = round_worksize_up (local_worksize[0], width);
+  global_worksize[1] = round_worksize_up (local_worksize[1], height);
+
+  err_num = CL_SUCCESS;
+  err_num |= clSetKernelArg (data->mesh_kernel, 0, sizeof (cl_mem),
+      &(data->buffer_matrix_device));
+  err_num |= clSetKernelArg (data->mesh_kernel, 1, sizeof (cl_mem),
+      &(data->labels_matrix_device));
+  err_num |= clSetKernelArg (data->mesh_kernel, 2, sizeof (cl_mem),
+      &(data->mD_device));
+  err_num |= clSetKernelArg (data->mesh_kernel, 3, sizeof (gint),
+      &width);
+  err_num |= clSetKernelArg (data->mesh_kernel, 4, sizeof (gint),
+      &height);
+  check_error (err_num, CL_SUCCESS);
+
+  err_num |= clSetKernelArg (data->initialize_graph_kernel, 0, sizeof (cl_mem),
+      &(data->labels_matrix_device));
+  err_num |= clSetKernelArg (data->initialize_graph_kernel, 1, sizeof (cl_mem),
+      &(data->edge_matrix_device));
+  err_num |= clSetKernelArg (data->initialize_graph_kernel, 2, sizeof (cl_mem),
+      &(data->weight_matrix_device));
+  err_num |= clSetKernelArg (data->initialize_graph_kernel, 3, sizeof (gint), &size);
+  check_error (err_num, CL_SUCCESS);
+
+  // Copy new data to device
+  err_num = clEnqueueWriteBuffer (data->command_queue,
+      data->buffer_matrix_device, CL_FALSE, 0, sizeof (guint16) * size,
+      buffer, 0, NULL, NULL);
+  check_error (err_num, CL_SUCCESS);
+
+  err_num = clEnqueueWriteBuffer (data->command_queue, data->mD_device,
+      CL_FALSE, 0, sizeof (gint), data->mD, 0, NULL, NULL);
+  check_error (err_num, CL_SUCCESS);
+
+  init_worksize = size;
+
+  err_num = clEnqueueNDRangeKernel (data->command_queue,
+      data->initialize_graph_kernel, 1, NULL, &init_worksize, NULL, 0, NULL, NULL);
+  check_error (err_num, CL_SUCCESS);
+
+  do
+    {
+      *(data->mD) = 0;
+      err_num = clEnqueueWriteBuffer (data->command_queue, data->mD_device,
+      CL_FALSE, 0, sizeof (gint), data->mD, 0, NULL, NULL);
+      check_error (err_num, CL_SUCCESS);
+
+      err_num = clEnqueueNDRangeKernel (data->command_queue, data->mesh_kernel,
+          2, NULL, global_worksize, local_worksize, 0, NULL, NULL);
+      check_error (err_num, CL_SUCCESS);
+
+
+      err_num = clEnqueueReadBuffer (data->command_queue, data->mD_device, CL_FALSE, 0,
+      sizeof (gint), data->mD, 0, NULL, &read_done);
+      check_error (err_num, CL_SUCCESS);
+
+      clWaitForEvents (1, &read_done);
+    } while (*(data->mD));
+  err_num = clEnqueueReadBuffer (data->command_queue,
+      data->labels_matrix_device, CL_FALSE, 0, sizeof (guint) * size,
+      data->labels_matrix, 0, NULL, &read_done);
+  check_error (err_num, CL_SUCCESS);
+
+  clWaitForEvents (1, &read_done);
+
+  return;
+}
+
+void
+ocl_make_graph (oclData *data,
+                gint width,
+                gint height,
+                gint label)
+{
+  cl_int err_num;
+  cl_event read_done[2];
+  gint size;
+
+  size_t global_worksize[2], local_worksize[2];
+
+  size = width * height;
+
+  local_worksize[0] = 16;
+  local_worksize[1] = 16;
+  global_worksize[0] = round_worksize_up (local_worksize[0], width);
+  global_worksize[1] = round_worksize_up (local_worksize[1], height);
+
+  err_num = CL_SUCCESS;
+
+  err_num |= clSetKernelArg (data->make_graph_kernel, 0, sizeof (cl_mem),
+        &(data->buffer_matrix_device));
+  err_num |= clSetKernelArg (data->make_graph_kernel, 1, sizeof (cl_mem),
+        &(data->labels_matrix_device));
+  err_num |= clSetKernelArg (data->make_graph_kernel, 2, sizeof (cl_mem),
+        &(data->edge_matrix_device));
+  err_num |= clSetKernelArg (data->make_graph_kernel, 3, sizeof (cl_mem),
+        &(data->weight_matrix_device));
+  err_num |= clSetKernelArg (data->make_graph_kernel, 4, sizeof (gint),
+        &(width));
+  err_num |= clSetKernelArg (data->make_graph_kernel, 5, sizeof (gint),
+        &(height));
+  err_num |= clSetKernelArg (data->make_graph_kernel, 6, sizeof (gint),
+        &(label));
+  check_error (err_num, CL_SUCCESS);
+
+  err_num = clEnqueueNDRangeKernel (data->command_queue,
+      data->make_graph_kernel, 2, NULL, global_worksize, local_worksize, 0,
+      NULL, NULL);
+  check_error (err_num, CL_SUCCESS);
+
+  err_num = clEnqueueReadBuffer (data->command_queue, data->edge_matrix_device,
+      CL_FALSE, 0, sizeof (gint) * size * NEIGHBOR_SIZE, data->edge_matrix, 0, NULL,
+      &read_done[0]);
+  check_error (err_num, CL_SUCCESS);
+
+  err_num = clEnqueueReadBuffer (data->command_queue, data->weight_matrix_device,
+      CL_FALSE, 0, sizeof (gint) * size * NEIGHBOR_SIZE, data->weight_matrix, 0, NULL,
+      &read_done[1]);
+  check_error (err_num, CL_SUCCESS);
+
+  clWaitForEvents (2, read_done);
 }

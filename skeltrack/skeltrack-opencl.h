@@ -12,6 +12,8 @@ typedef struct {
   gint *weight_matrix;
   guint *mask_matrix;
   gint *previous_matrix;
+  guint *labels_matrix;
+  gint *mD;
 
   cl_platform_id platform;
   cl_device_id device;
@@ -21,6 +23,8 @@ typedef struct {
 
   cl_mem edge_matrix_device;
   cl_mem weight_matrix_device;
+
+  /* Dijkstra */
   cl_mem mask_matrix_device;
   cl_mem distance_matrix_device;
   cl_mem updating_distance_matrix_device;
@@ -29,9 +33,31 @@ typedef struct {
   cl_kernel initialize_mask_kernel;
   cl_kernel dijkstra_kernel1;
   cl_kernel dijkstra_kernel2;
-} oclDijkstraData;
 
-gboolean    ocl_dijkstra_to             (oclDijkstraData         *data,
+  /* Labeling */
+  cl_mem buffer_matrix_device;
+  cl_mem labels_matrix_device;
+  cl_mem mD_device;
+
+  cl_kernel initialize_graph_kernel;
+  cl_kernel mesh_kernel;
+  cl_kernel make_graph_kernel;
+} oclData;
+
+void        ocl_init                    (oclData                 *data,
+                                         gint                     matrix_size);
+
+void        ocl_ccl                     (oclData                 *data,
+                                         guint16                 *buffer,
+                                         gint                     width,
+                                         gint                     height);
+
+void        ocl_make_graph              (oclData                 *data,
+                                         gint                     width,
+                                         gint                     height,
+                                         gint                     label);
+
+gboolean    ocl_dijkstra_to             (oclData                 *data,
                                          Node                    *source,
                                          Node                    *target,
                                          guint                    width,
@@ -39,9 +65,3 @@ gboolean    ocl_dijkstra_to             (oclDijkstraData         *data,
                                          gint                    *distance_matrix,
                                          Node                   **previous,
                                          Node                   **node_matrix);
-
-void        ocl_init                    (oclDijkstraData         *data,
-                                         gint                     matrix_size);
-
-void        ocl_dijkstra_send_graph     (oclDijkstraData         *data,
-                                         gint                     matrix_size);
