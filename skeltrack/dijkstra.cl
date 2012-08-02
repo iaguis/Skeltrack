@@ -1,3 +1,6 @@
+/* Dijkstra implementation based on Pawan Harish and P. J. Narayanan paper
+   Accelerating large graph algorithms on the GPU using CUDA */
+
 __kernel void dijkstra1(__global int *edge_matrix, __global int *weight_matrix,
     __global int *mask_matrix, __global int *distance_matrix, __global int
     *updating_distance_matrix, __global int *previous, int vertex_count)
