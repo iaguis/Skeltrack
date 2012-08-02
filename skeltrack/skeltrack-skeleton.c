@@ -592,39 +592,6 @@ skeltrack_skeleton_get_property (GObject    *obj,
     }
 }
 
-static gint
-join_neighbor (SkeltrackSkeleton *self,
-               Node *node,
-               Label **neighbor_labels,
-               gint index,
-               gint i,
-               gint j)
-{
-  Node *neighbor;
-  if (i < 0 || i >= self->priv->buffer_width ||
-      j < 0 || j >= self->priv->buffer_height)
-    {
-      return index;
-    }
-
-  neighbor = self->priv->node_matrix[self->priv->buffer_width * j + i];
-  if (neighbor != NULL)
-    {
-      gint distance;
-      distance = get_distance (neighbor, node);
-      if (distance < self->priv->distance_threshold)
-        {
-          neighbor->neighbors = g_list_append (neighbor->neighbors,
-                                               node);
-          node->neighbors = g_list_append (node->neighbors,
-                                           neighbor);
-          neighbor_labels[index] = neighbor->label;
-          index++;
-        }
-    }
-  return index;
-}
-
 GList *
 make_graph (SkeltrackSkeleton *self)
 {
