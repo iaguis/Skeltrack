@@ -1,9 +1,14 @@
 /* Dijkstra implementation based on Pawan Harish and P. J. Narayanan paper
    Accelerating large graph algorithms on the GPU using CUDA */
 
-__kernel void dijkstra1(__global int *edge_matrix, __global int *weight_matrix,
-    __global int *mask_matrix, __global int *distance_matrix, __global int
-    *updating_distance_matrix, __global int *previous, int vertex_count)
+__kernel void
+dijkstra1 (__global int *edge_matrix,
+           __global int *weight_matrix,
+           __global int *mask_matrix,
+           __global int *distance_matrix,
+           __global int *updating_distance_matrix,
+           __global int *previous,
+           int vertex_count)
 {
   int tid = get_global_id (0);
 
@@ -33,38 +38,47 @@ __kernel void dijkstra1(__global int *edge_matrix, __global int *weight_matrix,
   }
 }
 
-__kernel void dijkstra2(__global int *distance_matrix, __global int
-    *updating_distance_matrix, __global int *mask_matrix, int vertex_count)
+__kernel void
+dijkstra2 (__global int *distance_matrix,
+           __global int *updating_distance_matrix,
+           __global int *mask_matrix,
+           int vertex_count)
 {
   int tid = get_global_id(0);
 
-  if (tid < vertex_count) {
-    if ((distance_matrix[tid] == -1 && updating_distance_matrix[tid] != -1) ||
-        distance_matrix[tid] > updating_distance_matrix[tid])
-      {
-        distance_matrix[tid] = updating_distance_matrix[tid];
-        mask_matrix[tid] = 1;
-      }
+  if (tid < vertex_count)
+    {
+      if ((distance_matrix[tid] == -1 && updating_distance_matrix[tid] != -1) ||
+          distance_matrix[tid] > updating_distance_matrix[tid])
+        {
+          distance_matrix[tid] = updating_distance_matrix[tid];
+          mask_matrix[tid] = 1;
+        }
 
-    updating_distance_matrix[tid] = distance_matrix[tid];
-  }
+      updating_distance_matrix[tid] = distance_matrix[tid];
+    }
 }
 
-__kernel void initialize_mask(__global int *mask_matrix, __global int *previous, int source_vertex, int vertex_count)
+__kernel void
+initialize_mask (__global int *mask_matrix,
+                 __global int *previous,
+                 int source_vertex,
+                 int vertex_count)
 {
   int tid = get_global_id(0);
 
-  if (tid < vertex_count) {
-    if (previous != 0)
-      previous[tid] = -1;
-    if (tid == source_vertex)
-      {
-        mask_matrix[tid] = 1;
-      }
-    else
-      {
-        mask_matrix[tid] = 0;
-      }
-  }
+  if (tid < vertex_count)
+    {
+      if (previous != 0)
+        previous[tid] = -1;
+      if (tid == source_vertex)
+        {
+          mask_matrix[tid] = 1;
+        }
+      else
+        {
+          mask_matrix[tid] = 0;
+        }
+    }
 }
 
