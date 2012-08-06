@@ -683,10 +683,13 @@ make_graph (SkeltrackSkeleton *self)
                   neighbor = priv->node_matrix[data->edge_matrix[(j * width +
                       i) * NEIGHBOR_SIZE + k]];
 
-                  neighbor->neighbors = g_list_append (neighbor->neighbors,
-                                                       node);
-                  node->neighbors = g_list_append (node->neighbors,
-                                                   neighbor);
+                  if (neighbor != NULL)
+                    {
+                      neighbor->neighbors = g_list_append (neighbor->neighbors,
+                                                           node);
+                      node->neighbors = g_list_append (node->neighbors,
+                                                       neighbor);
+                    }
                 }
 
             }

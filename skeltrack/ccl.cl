@@ -33,7 +33,7 @@ get_distance (int a_x,
   dy = abs (a_y - b_y);
   dz = abs (a_z - b_z);
 
-  return sqrt (dx * dx + dy * dy + dz * dz);
+  return sqrt ((float) (dx * dx + dy * dy + dz * dz));
 }
 
 __kernel void
@@ -62,7 +62,8 @@ mesh_kernel (__global unsigned short *buffer,
              __global unsigned int *labels,
              __global int *mD,
              int width,
-             int height)
+             int height,
+             __local unsigned int *labels_local)
 {
   int id, idL, label, workgroup_size, i, j, block_start, index;
   int nId[NEIGHBOR_SIZE];
@@ -77,13 +78,13 @@ mesh_kernel (__global unsigned short *buffer,
 
   id = block_start + get_local_id (1) * width + get_local_id (0);
 
+  i = get_global_id (1);
+  j = get_global_id (0);
+
+  index = 0;
+
   if (id < size)
     {
-      i = get_global_id (1);
-      j = get_global_id (0);
-
-      index = 0;
-
       for (int k = (i-1); k <= (i+1); k++)
         {
           for (int l = (j-1); l <= (j+1); l++)
@@ -106,23 +107,85 @@ mesh_kernel (__global unsigned short *buffer,
                 }
             }
         }
-
       label = labels[id];
 
-      for (int i = 0; i < index; i++)
+
+    for (int i = 0; i < index; i++)
+      {
+        if (buffer[nId[i]] == 0)
+          {
+            labels[nId[i]] = 0;
+          }
+        if (labels[nId[i]] < label)
+          {
+            label = labels[nId[i]];
+            *mD = 1;
+          }
+      }
+    }
+
+  /* Label block in local memory */
+  __local int mL;
+
+  i = get_local_id (1);
+  j = get_local_id (0);
+
+  idL = i * workgroup_size + j;
+  mL = 1;
+
+  index = 0;
+
+  if (id < size)
+    {
+      for (int k = (i-1);  k <= (i+1); k++)
         {
-          if (buffer[nId[i]] == 0)
+          for (int l = (j-1); l <= (j+1); l++)
             {
-              labels[nId[i]] = 0;
-            }
-          if (labels[nId[i]] < label)
-            {
-              label = labels[nId[i]];
-              atomic_inc (mD);
+              if (k >= 0 && k < workgroup_size && l >= 0 && l < workgroup_size && (k != i || l != j))
+                {
+                  unsigned int neighbor_local = k * workgroup_size + l;
+                  unsigned int neighbor = block_start + k * width + l;
+                  
+                  if (neighbor < size)
+                    {
+                      if ((buffer[id] == 0) && (buffer[neighbor] == 0))
+                        {
+                          nId[index] = neighbor_local;
+                          index++;
+                        }
+                      else
+                      if ((buffer[id] != 0) && (buffer[neighbor] != 0))
+                        {
+                          nId[index] = neighbor_local;
+                          index++;
+                        }
+                    }
+                }
             }
         }
-      labels[id] = label;
     }
+
+  while (mL)
+    {
+      labels_local[idL] = label;
+
+      barrier (CLK_LOCAL_MEM_FENCE);
+      mL = 0;
+      for (int i = 0; i < index; i++)
+        {
+          if (labels_local[nId[i]] < label)
+            {
+              label = labels_local[nId[i]];
+              mL = 1;
+            }
+        }
+      barrier (CLK_LOCAL_MEM_FENCE);
+    }
+    
+    if (id < size)
+      {
+        labels[id] = label;
+      }
 }
 
 __kernel void

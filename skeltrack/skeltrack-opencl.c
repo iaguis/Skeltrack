@@ -610,6 +610,8 @@ ocl_ccl (oclData *data,
       &width);
   err_num |= clSetKernelArg (data->mesh_kernel, 4, sizeof (gint),
       &height);
+  err_num |= clSetKernelArg (data->mesh_kernel, 5, local_worksize[0] *
+      local_worksize[1] * sizeof (guint), NULL);
   check_error (err_num, CL_SUCCESS);
 
   err_num |= clSetKernelArg (data->initialize_graph_kernel, 0, sizeof (cl_mem),
