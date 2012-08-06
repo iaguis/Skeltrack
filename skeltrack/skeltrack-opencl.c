@@ -361,6 +361,13 @@ ocl_init_dijkstra (oclData *data,
   data->dijkstra_kernel2 = clCreateKernel (data->program, "dijkstra2", &err_num);
   check_error (err_num, CL_SUCCESS);
 
+  data->flush_distance_matrix_kernel = clCreateKernel (data->program,
+      "flush_distance_matrix", &err_num);
+  check_error (err_num, CL_SUCCESS);
+
+  data->set_source_vertex_kernel = clCreateKernel (data->program,
+      "set_source_vertex", &err_num);
+  check_error (err_num, CL_SUCCESS);
   data->initialize_mask_kernel = clCreateKernel (data->program, "initialize_mask",
   &err_num);
   check_error (err_num, CL_SUCCESS);
@@ -456,6 +463,55 @@ gint round_worksize_up (gint group_size, gint global_size)
     }
 }
 
+void
+ocl_flush_distance_matrix (oclData *data,
+                           gint matrix_size)
+{
+  cl_uint err_num;
+  size_t global_worksize;
+
+  global_worksize = matrix_size;
+
+  err_num = CL_SUCCESS;
+
+  err_num |= clSetKernelArg (data->flush_distance_matrix_kernel, 0, sizeof
+      (cl_mem), &(data->distance_matrix_device));
+  err_num |= clSetKernelArg (data->flush_distance_matrix_kernel, 1, sizeof
+      (cl_mem), &(data->updating_distance_matrix_device));
+  err_num |= clSetKernelArg (data->flush_distance_matrix_kernel, 2, sizeof
+      (gint), &matrix_size);
+  check_error (err_num, CL_SUCCESS);
+
+  err_num = clEnqueueNDRangeKernel (data->command_queue,
+      data->flush_distance_matrix_kernel, 1, NULL, &global_worksize,
+      NULL, 0, NULL, NULL);
+  check_error (err_num, CL_SUCCESS);
+}
+
+void
+ocl_set_source_vertex (oclData *data,
+                       cl_mem *distance_matrix,
+                       gint source_vertex,
+                       gint matrix_size)
+{
+  cl_uint err_num;
+  size_t global_worksize;
+
+  global_worksize = matrix_size;
+
+  err_num = CL_SUCCESS;
+
+  err_num |= clSetKernelArg (data->set_source_vertex_kernel, 0, sizeof
+      (cl_mem), distance_matrix);
+  err_num |= clSetKernelArg (data->set_source_vertex_kernel, 1, sizeof (gint),
+      &source_vertex);
+
+  err_num = clEnqueueNDRangeKernel (data->command_queue,
+      data->set_source_vertex_kernel, 1, NULL, &global_worksize,
+      NULL, 0, NULL, NULL);
+  check_error (err_num, CL_SUCCESS);
+}
+
 gboolean
 ocl_dijkstra_to (oclData *data,
                  Node *source,
@@ -486,7 +542,8 @@ ocl_dijkstra_to (oclData *data,
   local_worksize = max_workgroup_size;
   global_worksize = round_worksize_up (local_worksize, matrix_size);
 
-  distance_matrix[source_vertex] = 0;
+  /* Set source_vertex to 0 */
+  ocl_set_source_vertex (data, &(data->distance_matrix_device), source_vertex, matrix_size);
 
   err_num = CL_SUCCESS;
   /* Set kernel arguments */
@@ -517,15 +574,6 @@ ocl_dijkstra_to (oclData *data,
       &source_vertex);
   err_num |= clSetKernelArg (data->initialize_mask_kernel, 3, sizeof (gint), &matrix_size);
   check_error (err_num, CL_SUCCESS);
-
-  /* Copy new data to device */
-  err_num = clEnqueueWriteBuffer (data->command_queue,
-      data->distance_matrix_device, CL_FALSE, 0, sizeof (gint) * matrix_size, distance_matrix,
-      0, NULL, NULL);
-
-  err_num = clEnqueueWriteBuffer (data->command_queue,
-      data->updating_distance_matrix_device, CL_FALSE, 0, sizeof (gint) * matrix_size, distance_matrix,
-      0, NULL, NULL);
 
   err_num = clEnqueueNDRangeKernel (data->command_queue, data->initialize_mask_kernel, 1, NULL,
   &global_worksize, &local_worksize, 0, NULL, NULL);
@@ -641,6 +689,8 @@ ocl_ccl (oclData *data,
 
   do
     {
+      /* TODO maybe do this in the device as it could be faster (avoids data
+         transfer) */
       *(data->mD) = 0;
       err_num = clEnqueueWriteBuffer (data->command_queue, data->mD_device,
       CL_FALSE, 0, sizeof (gint), data->mD, 0, NULL, NULL);

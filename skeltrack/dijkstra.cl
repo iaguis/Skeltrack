@@ -82,3 +82,28 @@ initialize_mask (__global int *mask_matrix,
     }
 }
 
+__kernel void
+flush_distance_matrix (__global int *distance_matrix,
+                       __global int *updating_distance_matrix,
+                       int vertex_count)
+{
+  int tid = get_global_id (0);
+
+  if (tid < vertex_count)
+    {
+      distance_matrix[tid] = -1;
+      updating_distance_matrix[tid] = -1;
+    }
+}
+
+__kernel void
+set_source_vertex (__global int *distance_matrix,
+                   int source_vertex)
+{
+  int tid = get_global_id (0);
+
+  if (tid == source_vertex)
+    {
+      distance_matrix[tid] = 0;
+    }
+}

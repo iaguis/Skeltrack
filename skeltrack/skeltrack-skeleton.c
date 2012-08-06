@@ -800,7 +800,7 @@ static GList *
 get_extremas (SkeltrackSkeleton *self, Node *centroid)
 {
   SkeltrackSkeletonPrivate *priv;
-  gint i, nr_nodes, matrix_size;
+  gint nr_nodes, matrix_size;
   Node *lowest, *source, *node;
   GList *extremas = NULL;
 
@@ -814,10 +814,8 @@ get_extremas (SkeltrackSkeleton *self, Node *centroid)
       priv->distances_matrix = g_slice_alloc0 (matrix_size * sizeof (gint));
     }
 
-  for (i = 0; i < matrix_size; i++)
-    {
-      priv->distances_matrix[i] = -1;
-    }
+  /* Flush distance matrix in the device */
+  ocl_flush_distance_matrix (priv->ocl_data, matrix_size);
 
   for (nr_nodes = NR_EXTREMAS_TO_SEARCH;
        source != NULL && nr_nodes > 0;
@@ -1077,6 +1075,7 @@ set_left_and_right_from_extremas (SkeltrackSkeleton *self,
   previous_right_b = g_slice_alloc0 (matrix_size * sizeof (Node *));
 
   dist_left_a = create_new_dist_matrix(matrix_size);
+  ocl_flush_distance_matrix (self->priv->ocl_data, matrix_size);
   ocl_dijkstra_to (self->priv->ocl_data,
                     left_shoulder,
                     ext_a,
@@ -1087,6 +1086,7 @@ set_left_and_right_from_extremas (SkeltrackSkeleton *self,
                     self->priv->node_matrix);
 
   dist_left_b = create_new_dist_matrix(matrix_size);
+  ocl_flush_distance_matrix (self->priv->ocl_data, matrix_size);
   ocl_dijkstra_to (self->priv->ocl_data,
                    left_shoulder,
                    ext_b,
@@ -1096,8 +1096,8 @@ set_left_and_right_from_extremas (SkeltrackSkeleton *self,
                    previous_left_b,
                    self->priv->node_matrix);
 
-
   dist_right_a = create_new_dist_matrix(matrix_size);
+  ocl_flush_distance_matrix (self->priv->ocl_data, matrix_size);
   ocl_dijkstra_to (self->priv->ocl_data,
                    right_shoulder,
                    ext_a,
@@ -1109,6 +1109,7 @@ set_left_and_right_from_extremas (SkeltrackSkeleton *self,
 
 
   dist_right_b = create_new_dist_matrix(matrix_size);
+  ocl_flush_distance_matrix (self->priv->ocl_data, matrix_size);
   ocl_dijkstra_to (self->priv->ocl_data,
                    right_shoulder,
                    ext_b,
