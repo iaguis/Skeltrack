@@ -24,18 +24,6 @@ typedef struct {
   cl_mem edge_matrix_device;
   cl_mem weight_matrix_device;
 
-  /* Dijkstra */
-  cl_mem mask_matrix_device;
-  cl_mem distance_matrix_device;
-  cl_mem updating_distance_matrix_device;
-  cl_mem previous_matrix_device;
-
-  cl_kernel initialize_mask_kernel;
-  cl_kernel flush_distance_matrix_kernel;
-  cl_kernel set_source_vertex_kernel;
-  cl_kernel dijkstra_kernel1;
-  cl_kernel dijkstra_kernel2;
-
   /* Labeling */
   cl_mem buffer_matrix_device;
   cl_mem labels_matrix_device;
@@ -59,14 +47,3 @@ void        ocl_make_graph              (oclData                 *data,
                                          gint                     height,
                                          gint                     label);
 
-gboolean    ocl_dijkstra_to             (oclData                 *data,
-                                         Node                    *source,
-                                         Node                    *target,
-                                         guint                    width,
-                                         guint                    height,
-                                         gint                    *distance_matrix,
-                                         Node                   **previous,
-                                         Node                   **node_matrix);
-
-void        ocl_flush_distance_matrix   (oclData                 *data,
-                                         gint                     matrix_sixe);

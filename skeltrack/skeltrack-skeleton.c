@@ -100,7 +100,7 @@ struct _SkeltrackSkeletonPrivate
   gint  *distances_matrix;
   GList *lowest_component;
 
-  /* struct for OpenCL Dijkstra */
+  /* struct for OpenCL */
   oclData *ocl_data;
 
   guint16 dimension_reduction;
@@ -814,21 +814,23 @@ get_extremas (SkeltrackSkeleton *self, Node *centroid)
       priv->distances_matrix = g_slice_alloc0 (matrix_size * sizeof (gint));
     }
 
-  /* Flush distance matrix in the device */
-  ocl_flush_distance_matrix (priv->ocl_data, matrix_size);
+  for (i=0; i<matrix_size; i++)
+    {
+      priv->distances_matrix[i] = -1;
+    }
+
 
   for (nr_nodes = NR_EXTREMAS_TO_SEARCH;
        source != NULL && nr_nodes > 0;
        nr_nodes--)
     {
-      ocl_dijkstra_to (priv->ocl_data,
-                      source,
-                      NULL,
-                      priv->buffer_width,
-                      priv->buffer_height,
-                      priv->distances_matrix,
-                      NULL,
-                      priv->node_matrix);
+      dijkstra_to (priv->graph,
+		   source,
+		   NULL,
+		   priv->buffer_width,
+		   priv->buffer_height,
+		   priv->distances_matrix,
+		   NULL);
 
       node = get_longer_distance (self, priv->distances_matrix);
       if (node == NULL)
@@ -1075,49 +1077,41 @@ set_left_and_right_from_extremas (SkeltrackSkeleton *self,
   previous_right_b = g_slice_alloc0 (matrix_size * sizeof (Node *));
 
   dist_left_a = create_new_dist_matrix(matrix_size);
-  ocl_flush_distance_matrix (self->priv->ocl_data, matrix_size);
-  ocl_dijkstra_to (self->priv->ocl_data,
-                    left_shoulder,
-                    ext_a,
-                    width,
-                    height,
-                    dist_left_a,
-                    previous_left_a,
-                    self->priv->node_matrix);
+  dijkstra_to (self->priv->graph,
+	       left_shoulder,
+	       ext_a,
+	       width,
+	       height,
+	       dist_left_a,
+	       previous_left_a);
 
   dist_left_b = create_new_dist_matrix(matrix_size);
-  ocl_flush_distance_matrix (self->priv->ocl_data, matrix_size);
-  ocl_dijkstra_to (self->priv->ocl_data,
-                   left_shoulder,
-                   ext_b,
-                   width,
-                   height,
-                   dist_left_b,
-                   previous_left_b,
-                   self->priv->node_matrix);
+  dijkstra_to (self->priv->graph,
+	       left_shoulder,
+	       ext_b,
+	       width,
+	       height,
+	       dist_left_b,
+	       previous_left_b);
 
   dist_right_a = create_new_dist_matrix(matrix_size);
-  ocl_flush_distance_matrix (self->priv->ocl_data, matrix_size);
-  ocl_dijkstra_to (self->priv->ocl_data,
-                   right_shoulder,
-                   ext_a,
-                   width,
-                   height,
-                   dist_right_a,
-                   previous_right_a,
-                   self->priv->node_matrix);
+  dijkstra_to (self->priv->graph,
+	       right_shoulder,
+	       ext_a,
+	       width,
+	       height,
+	       dist_right_a,
+	       previous_right_a);
 
 
   dist_right_b = create_new_dist_matrix(matrix_size);
-  ocl_flush_distance_matrix (self->priv->ocl_data, matrix_size);
-  ocl_dijkstra_to (self->priv->ocl_data,
-                   right_shoulder,
-                   ext_b,
-                   width,
-                   height,
-                   dist_right_b,
-                   previous_right_b,
-                   self->priv->node_matrix);
+  dijkstra_to (self->priv->graph,
+	       right_shoulder,
+	       ext_b,
+	       width,
+	       height,
+	       dist_right_b,
+	       previous_right_b);
 
 
   total_dist_left_a = dist_left_a[ext_a->j * width + ext_a->i];
@@ -1443,10 +1437,6 @@ clean_tracking_resources (SkeltrackSkeleton *self)
 
       clReleaseMemObject (self->priv->ocl_data->edge_matrix_device);
       clReleaseMemObject (self->priv->ocl_data->weight_matrix_device);
-      clReleaseMemObject (self->priv->ocl_data->mask_matrix_device);
-      clReleaseMemObject (self->priv->ocl_data->distance_matrix_device);
-      clReleaseMemObject (self->priv->ocl_data->updating_distance_matrix_device);
-      clReleaseMemObject (self->priv->ocl_data->previous_matrix_device);
       clReleaseMemObject (self->priv->ocl_data->buffer_matrix_device);
       clReleaseMemObject (self->priv->ocl_data->labels_matrix_device);
       clReleaseMemObject (self->priv->ocl_data->mD_device);
@@ -1455,9 +1445,6 @@ clean_tracking_resources (SkeltrackSkeleton *self)
       clReleaseKernel (self->priv->ocl_data->initialize_graph_kernel);
       clReleaseKernel (self->priv->ocl_data->mesh_kernel);
       clReleaseKernel (self->priv->ocl_data->make_graph_kernel);
-      clReleaseKernel (self->priv->ocl_data->initialize_mask_kernel);
-      clReleaseKernel (self->priv->ocl_data->dijkstra_kernel1);
-      clReleaseKernel (self->priv->ocl_data->dijkstra_kernel2);
 
       g_slice_free1 (sizeof (oclData), self->priv->ocl_data);
       self->priv->ocl_data = NULL;
