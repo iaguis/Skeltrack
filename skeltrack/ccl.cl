@@ -210,7 +210,7 @@ make_graph (__global unsigned short *buffer,
     {
       index = 0;
 
-      if (labels[node] != 0)
+      if (labels[node] == label)
         {
         for (int k=(i-1); k<=(i+1); k++)
           {
