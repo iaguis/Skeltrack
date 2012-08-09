@@ -800,7 +800,7 @@ static GList *
 get_extremas (SkeltrackSkeleton *self, Node *centroid)
 {
   SkeltrackSkeletonPrivate *priv;
-  gint nr_nodes, matrix_size;
+  gint nr_nodes, matrix_size, i;
   Node *lowest, *source, *node;
   GList *extremas = NULL;
 
