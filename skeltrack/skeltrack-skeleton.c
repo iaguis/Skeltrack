@@ -93,6 +93,7 @@ struct _SkeltrackSkeletonPrivate
   guint buffer_height;
 
   GAsyncResult *track_joints_result;
+  GMutex track_joints_mutex;
 
   GList *graph;
   GList *labels;
@@ -111,10 +112,6 @@ struct _SkeltrackSkeletonPrivate
   guint16 shoulders_minimum_distance;
   guint16 shoulders_maximum_distance;
   guint16 shoulders_offset;
-
-  GThread *dispatch_thread;
-  GMutex *dispatch_mutex;
-  gboolean abort_dispatch_thread;
 
   gboolean enable_smoothing;
   SmoothData smooth_data;
@@ -144,8 +141,6 @@ enum
 
 static void     skeltrack_skeleton_class_init         (SkeltrackSkeletonClass *class);
 static void     skeltrack_skeleton_init               (SkeltrackSkeleton *self);
-static void     skeltrack_skeleton_finalize           (GObject *obj);
-static void     skeltrack_skeleton_dispose            (GObject *obj);
 
 static void     skeltrack_skeleton_set_property       (GObject *obj,
                                                        guint prop_id,
@@ -159,6 +154,8 @@ static void     skeltrack_skeleton_get_property       (GObject *obj,
 
 static void     clean_tracking_resources              (SkeltrackSkeleton *self);
 
+static void     clean_tracking_resources              (SkeltrackSkeleton *self);
+
 G_DEFINE_TYPE (SkeltrackSkeleton, skeltrack_skeleton, G_TYPE_OBJECT)
 
 static void
@@ -168,8 +165,6 @@ skeltrack_skeleton_class_init (SkeltrackSkeletonClass *class)
 
   obj_class = G_OBJECT_CLASS (class);
 
-  obj_class->dispose = skeltrack_skeleton_dispose;
-  obj_class->finalize = skeltrack_skeleton_finalize;
   obj_class->get_property = skeltrack_skeleton_get_property;
   obj_class->set_property = skeltrack_skeleton_set_property;
 
@@ -397,8 +392,7 @@ skeltrack_skeleton_init (SkeltrackSkeleton *self)
 
   priv->track_joints_result = NULL;
 
-  priv->dispatch_thread = NULL;
-  priv->dispatch_mutex = g_mutex_new ();
+  g_mutex_init (&priv->track_joints_mutex);
 
   priv->enable_smoothing = ENABLE_SMOOTHING_DEFAULT;
   priv->smooth_data.smoothing_factor = SMOOTHING_FACTOR_DEFAULT;
@@ -429,48 +423,6 @@ init_opencl_structures (SkeltrackSkeleton *self)
   priv->ocl_data->mD = g_slice_alloc0 (sizeof (gint));
 
   ocl_init (priv->ocl_data, size);
-}
-
-static void
-skeltrack_skeleton_dispose (GObject *obj)
-{
-  SkeltrackSkeleton *self = SKELTRACK_SKELETON (obj);
-
-  /* stop dispatch thread */
-  if (self->priv->dispatch_thread != NULL)
-    {
-      self->priv->abort_dispatch_thread = TRUE;
-      g_thread_join (self->priv->dispatch_thread);
-
-      g_mutex_lock (self->priv->dispatch_mutex);
-
-      self->priv->dispatch_thread = NULL;
-
-      clean_tracking_resources (self);
-
-      g_mutex_unlock (self->priv->dispatch_mutex);
-    }
-  else
-    {
-      clean_tracking_resources (self);
-    }
-
-  skeltrack_joint_list_free (self->priv->smooth_data.smoothed_joints);
-  skeltrack_joint_list_free (self->priv->smooth_data.trend_joints);
-
-  skeltrack_joint_free (self->priv->previous_head);
-
-  G_OBJECT_CLASS (skeltrack_skeleton_parent_class)->dispose (obj);
-}
-
-static void
-skeltrack_skeleton_finalize (GObject *obj)
-{
-  SkeltrackSkeleton *self = SKELTRACK_SKELETON (obj);
-
-  g_mutex_free (self->priv->dispatch_mutex);
-
-  G_OBJECT_CLASS (skeltrack_skeleton_parent_class)->finalize (obj);
 }
 
 static void
@@ -942,6 +894,7 @@ get_head_and_shoulders (GList   *nodes,
           return TRUE;
         }
     }
+
   return FALSE;
 }
 
@@ -1328,63 +1281,9 @@ track_joints (SkeltrackSkeleton *self)
                                                    SKELTRACK_JOINT_ID_HEAD);
       self->priv->previous_head = skeltrack_joint_copy (joint);
     }
+  g_list_free (extremas);
 
   return joints;
-}
-
-static gpointer
-dispatch_thread_func (gpointer _data)
-{
-  SkeltrackSkeleton *self = SKELTRACK_SKELETON (_data);
-  gboolean abort = FALSE;
-
-  while (! abort)
-    {
-      if (self->priv->track_joints_result != NULL)
-        {
-          SkeltrackJointList joints = track_joints (self);
-
-          g_mutex_lock (self->priv->dispatch_mutex);
-
-          GSimpleAsyncResult *res =
-            (GSimpleAsyncResult *) self->priv->track_joints_result;
-          g_simple_async_result_set_op_res_gpointer (res, joints, NULL);
-
-          g_simple_async_result_complete_in_idle (res);
-          g_object_unref (self->priv->track_joints_result);
-          self->priv->track_joints_result = NULL;
-
-          g_mutex_unlock (self->priv->dispatch_mutex);
-        }
-
-      if (self->priv->track_joints_result == NULL ||
-          self->priv->abort_dispatch_thread)
-        {
-          abort = TRUE;
-        }
-      else
-        {
-          g_usleep (1);
-        }
-    }
-
-  g_mutex_lock (self->priv->dispatch_mutex);
-  self->priv->dispatch_thread = NULL;
-  g_mutex_unlock (self->priv->dispatch_mutex);
-
-  return NULL;
-}
-
-static gboolean
-launch_dispatch_thread (SkeltrackSkeleton *self, GError **error)
-{
-  self->priv->abort_dispatch_thread = FALSE;
-
-  self->priv->dispatch_thread = g_thread_create (dispatch_thread_func,
-                                                 self,
-                                                 TRUE,
-                                                 error);
-  return self->priv->dispatch_thread != NULL;
 }
 
 static void
@@ -1449,6 +1348,27 @@ clean_tracking_resources (SkeltrackSkeleton *self)
       g_slice_free1 (sizeof (oclData), self->priv->ocl_data);
       self->priv->ocl_data = NULL;
     }
+}
+
+static void
+track_joints_in_thread (GSimpleAsyncResult *res,
+                        GObject            *object,
+                        GCancellable       *cancellable)
+{
+  SkeltrackSkeleton *self = SKELTRACK_SKELETON (object);
+  SkeltrackJointList joints;
+
+  joints = track_joints (self);
+
+  g_mutex_lock (&self->priv->track_joints_mutex);
+  self->priv->track_joints_result = NULL;
+  g_mutex_unlock (&self->priv->track_joints_mutex);
+
+  g_simple_async_result_set_op_res_gpointer (res,
+                                             joints,
+                                             NULL);
+
+  g_object_unref (res);
 }
 
 /* public methods */
@@ -1521,9 +1441,9 @@ skeltrack_skeleton_track_joints (SkeltrackSkeleton   *self,
       return;
     }
 
-  g_mutex_lock (self->priv->dispatch_mutex);
+  g_mutex_lock (&self->priv->track_joints_mutex);
 
-  self->priv->track_joints_result = (GAsyncResult *) result;
+  self->priv->track_joints_result = G_ASYNC_RESULT (result);
 
   /* @TODO: Set the cancellable */
 
@@ -1538,10 +1458,12 @@ skeltrack_skeleton_track_joints (SkeltrackSkeleton   *self,
       self->priv->buffer_height = height;
     }
 
-  g_mutex_unlock (self->priv->dispatch_mutex);
+  g_simple_async_result_run_in_thread (result,
+                                       track_joints_in_thread,
+                                       G_PRIORITY_DEFAULT,
+                                       cancellable);
 
-  if (self->priv->dispatch_thread == NULL)
-    launch_dispatch_thread (self, NULL);
+  g_mutex_unlock (&self->priv->track_joints_mutex);
 }
 
 /**
