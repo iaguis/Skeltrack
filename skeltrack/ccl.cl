@@ -65,7 +65,7 @@ mesh_kernel (__global unsigned short *buffer,
              int height,
              __local unsigned int *labels_local)
 {
-  int id, idL, label, workgroup_size, i, j, block_start, index;
+  int id, idL, label, workgroup_size, i, j, z, block_start, index;
   int nId[NEIGHBOR_SIZE];
   int size;
 
@@ -110,18 +110,20 @@ mesh_kernel (__global unsigned short *buffer,
       label = labels[id];
 
 
-    for (int i = 0; i < index; i++)
+    for (int z = 0; z < index; z++)
       {
-        if (buffer[nId[i]] == 0)
+        /* Check this out, may be wrong */
+        if (buffer[nId[z]] == 0)
           {
-            labels[nId[i]] = 0;
+            label = 0;
           }
-        if (labels[nId[i]] < label)
+        if (labels[nId[z]] < label)
           {
-            label = labels[nId[i]];
-            *mD = 1;
+            label = labels[nId[z]];
+            atomic_xchg (mD, 1);
           }
       }
+      labels[id] = label;
     }
 
   /* Label block in local memory */
