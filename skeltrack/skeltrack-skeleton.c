@@ -593,6 +593,8 @@ make_graph (SkeltrackSkeleton *self)
 
   ocl_make_graph (data, width, height, biggest);
 
+  g_slice_free1 (sizeof (guint) * width * height, data->labels_matrix);
+
   /* nodes to node matrix */
   for (i = 0; i < width; i++)
     {
@@ -1274,9 +1276,11 @@ track_joints (SkeltrackSkeleton *self)
       joints = smoothed;
     }
 
-  skeltrack_joint_free (self->priv->previous_head);
+
   if (joints)
     {
+      skeltrack_joint_free (self->priv->previous_head);
+
       SkeltrackJoint *joint = skeltrack_joint_list_get_joint (joints,
                                                    SKELTRACK_JOINT_ID_HEAD);
       self->priv->previous_head = skeltrack_joint_copy (joint);
