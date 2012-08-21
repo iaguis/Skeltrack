@@ -28,10 +28,12 @@ typedef struct {
   cl_mem buffer_matrix_device;
   cl_mem labels_matrix_device;
   cl_mem mD_device;
+  cl_mem close_node_device;
 
   cl_kernel initialize_graph_kernel;
   cl_kernel mesh_kernel;
   cl_kernel make_graph_kernel;
+  cl_kernel join_to_biggest_kernel;
 } oclData;
 
 void        ocl_init                    (oclData                 *data,
@@ -46,4 +48,14 @@ void        ocl_make_graph              (oclData                 *data,
                                          gint                     width,
                                          gint                     height,
                                          gint                     label);
+
+gint *      ocl_join_to_biggest         (oclData                 *data,
+                                         gint                     i,
+                                         gint                     j,
+                                         gint                     biggest,
+                                         gint                     dist_x,
+                                         gint                     dist_y,
+                                         gint                     dist_z,
+                                         gint                     width,
+                                         gint                     height);
 

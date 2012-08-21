@@ -578,7 +578,6 @@ make_graph (SkeltrackSkeleton *self)
   histogram = g_slice_alloc0 (sizeof (guint) * width * height);
 
   biggest = 0;
-
   for (i = 0; i < width; i++) {
     for (j = 0; j < height; j++) {
       if (data->labels_matrix[j*width + i] == 0)
@@ -592,6 +591,62 @@ make_graph (SkeltrackSkeleton *self)
   g_slice_free1 (sizeof (guint) * width * height, histogram);
 
   ocl_make_graph (data, width, height, biggest);
+
+  gboolean label_done = FALSE;
+  gint current_label = -1;
+  int *close_node = NULL;
+  int node, dist;
+
+  for (i = 0; i < width; i++)
+    {
+      for (j = 0; j < height; j++)
+        {
+          gint index = j * width + i;
+
+          if (label_done && data->labels_matrix[index] == current_label)
+            continue;
+
+          label_done = FALSE;
+
+          current_label = data->labels_matrix[index];
+          if (current_label != 0 && current_label != biggest)
+            {
+              close_node = ocl_join_to_biggest(data, i, j, biggest,
+                  priv->distance_threshold, priv->distance_threshold,
+                  priv->hands_minimum_distance, width, height);
+
+              node = close_node[0];
+              dist = close_node[1];
+
+              g_slice_free1 (sizeof (int) * 2, close_node);
+
+              if (node == -1)
+                continue;
+
+              for (k = 0; k < NEIGHBOR_SIZE; k++) {
+                gint index2 = index * NEIGHBOR_SIZE + k;
+                if (data->edge_matrix[index2] == -1)
+                  {
+                    data->edge_matrix[index2] = node;
+                    data->weight_matrix[index2] = dist;
+                    break;
+                  }
+              }
+
+              for (k = 0; k < NEIGHBOR_SIZE; k++) {
+                gint index2 = node * NEIGHBOR_SIZE + k;
+                if (data->edge_matrix[index2] == -1)
+                  {
+                    data->edge_matrix[index2] = index;
+                    data->weight_matrix[index2] = dist;
+                    break;
+                  }
+              }
+
+              label_done = TRUE;
+            }
+        }
+    }
 
   g_slice_free1 (sizeof (guint) * width * height, data->labels_matrix);
 
@@ -1343,11 +1398,13 @@ clean_tracking_resources (SkeltrackSkeleton *self)
       clReleaseMemObject (self->priv->ocl_data->buffer_matrix_device);
       clReleaseMemObject (self->priv->ocl_data->labels_matrix_device);
       clReleaseMemObject (self->priv->ocl_data->mD_device);
+      clReleaseMemObject (self->priv->ocl_data->close_node_device);
 
 
       clReleaseKernel (self->priv->ocl_data->initialize_graph_kernel);
       clReleaseKernel (self->priv->ocl_data->mesh_kernel);
       clReleaseKernel (self->priv->ocl_data->make_graph_kernel);
+      clReleaseKernel (self->priv->ocl_data->join_to_biggest_kernel);
 
       g_slice_free1 (sizeof (oclData), self->priv->ocl_data);
       self->priv->ocl_data = NULL;

@@ -355,6 +355,10 @@ ocl_init_labeling (oclData *data,
       CL_MEM_READ_WRITE, sizeof (gint) * matrix_size * NEIGHBOR_SIZE, NULL, &err_num);
   check_error (err_num, CL_SUCCESS);
 
+  data->close_node_device = clCreateBuffer (data->context, CL_MEM_READ_WRITE,
+      sizeof (gint) * 2, NULL, &err_num);
+  check_error (err_num, CL_SUCCESS);
+
   /* Create kernels */
   data->initialize_graph_kernel = clCreateKernel (data->program,
       "initialize_graph", &err_num);
@@ -365,6 +369,10 @@ ocl_init_labeling (oclData *data,
 
   data->make_graph_kernel = clCreateKernel (data->program, "make_graph",
       &err_num);
+  check_error (err_num, CL_SUCCESS);
+
+  data->join_to_biggest_kernel = clCreateKernel (data->program,
+      "join_to_biggest", &err_num);
   check_error (err_num, CL_SUCCESS);
 }
 
@@ -553,4 +561,73 @@ ocl_make_graph (oclData *data,
   check_error (err_num, CL_SUCCESS);
 
   clWaitForEvents (2, read_done);
+}
+
+gint *
+ocl_join_to_biggest (oclData *data,
+                     gint i,
+                     gint j,
+                     gint biggest,
+                     gint dist_x,
+                     gint dist_y,
+                     gint dist_z,
+                     gint width,
+                     gint height)
+{
+  cl_int err_num;
+  cl_event read_done;
+  gint *close_node;
+
+  size_t global_worksize[2];
+
+  close_node = g_slice_alloc (sizeof(gint) * 2);
+
+  close_node[0] = close_node[1] = -1;
+
+  global_worksize[0] = width;
+  global_worksize[1] = height;
+
+  err_num = CL_SUCCESS;
+
+  err_num = clEnqueueWriteBuffer (data->command_queue,
+      data->close_node_device, CL_FALSE, 0, sizeof (gint) * 2, close_node,
+      0, NULL, NULL);
+
+  err_num |= clSetKernelArg (data->join_to_biggest_kernel, 0, sizeof (cl_mem),
+      &(data->labels_matrix_device));
+  err_num |= clSetKernelArg (data->join_to_biggest_kernel, 1, sizeof (cl_mem),
+      &(data->buffer_matrix_device));
+  err_num |= clSetKernelArg (data->join_to_biggest_kernel, 2, sizeof (cl_mem),
+      &(data->close_node_device));
+
+  err_num |= clSetKernelArg (data->join_to_biggest_kernel, 3, sizeof (int),
+      &(i));
+  err_num |= clSetKernelArg (data->join_to_biggest_kernel, 4, sizeof (int),
+      &(j));
+  err_num |= clSetKernelArg (data->join_to_biggest_kernel, 5, sizeof (int),
+      &(biggest));
+  err_num |= clSetKernelArg (data->join_to_biggest_kernel, 6, sizeof (int),
+      &(dist_x));
+  err_num |= clSetKernelArg (data->join_to_biggest_kernel, 7, sizeof (int),
+      &(dist_y));
+  err_num |= clSetKernelArg (data->join_to_biggest_kernel, 8, sizeof (int),
+      &(dist_z));
+  err_num |= clSetKernelArg (data->join_to_biggest_kernel, 9, sizeof (int),
+      &(width));
+  err_num |= clSetKernelArg (data->join_to_biggest_kernel, 10, sizeof (int),
+      &(height));
+  check_error (err_num, CL_SUCCESS);
+
+  err_num = clEnqueueNDRangeKernel (data->command_queue,
+      data->join_to_biggest_kernel, 2, NULL, global_worksize, NULL, 0, NULL,
+      NULL);
+  check_error (err_num, CL_SUCCESS);
+
+  err_num = clEnqueueReadBuffer (data->command_queue, data->close_node_device,
+      CL_FALSE, 0, sizeof (gint) * 2, close_node, 0, NULL, &read_done);
+  check_error (err_num, CL_SUCCESS);
+
+  clWaitForEvents (1, &read_done);
+
+  return close_node;
 }
