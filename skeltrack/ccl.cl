@@ -4,13 +4,13 @@
 
 void
 convert_screen_coords_to_mm (int width,
-                                  int height,
-                                  int dimension_reduction,
-                                  int i,
-                                  int j,
-                                  int z,
-                                  int *x,
-                                  int *y)
+                             int height,
+                             int dimension_reduction,
+                             int i,
+                             int j,
+                             int z,
+                             int *x,
+                             int *y)
 {
   /* Formula from http://openkinect.org/wiki/Imaging_Information */
   *x = round((i * dimension_reduction - width * dimension_reduction / 2.0) *
@@ -107,8 +107,15 @@ mesh_kernel (__global unsigned short *buffer,
                 }
             }
         }
-      label = labels[id];
 
+      if (buffer[id] == 0)
+        {
+          label = 0;
+        }
+      else
+        {
+          label = labels[id];
+        }
 
     for (int z = 0; z < index; z++)
       {
