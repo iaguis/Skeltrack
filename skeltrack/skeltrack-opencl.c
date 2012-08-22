@@ -395,7 +395,7 @@ ocl_init (oclData *data,
         }
 
       /* Set up context for GPU */
-      err_num = ocl_set_up_context (CL_DEVICE_TYPE_CPU, &(data->platform), &(data->context), &(data->device), &(data->command_queue));
+      err_num = ocl_set_up_context (CL_DEVICE_TYPE_GPU, &(data->platform), &(data->context), &(data->device), &(data->command_queue));
       check_error (err_num, CL_SUCCESS);
 
       ocl_init_labeling (data, matrix_size);
