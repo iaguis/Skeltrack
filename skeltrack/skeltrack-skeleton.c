@@ -156,8 +156,6 @@ static void     skeltrack_skeleton_get_property       (GObject *obj,
 
 static void     clean_tracking_resources              (SkeltrackSkeleton *self);
 
-static void     clean_tracking_resources              (SkeltrackSkeleton *self);
-
 G_DEFINE_TYPE (SkeltrackSkeleton, skeltrack_skeleton, G_TYPE_OBJECT)
 
 static void
