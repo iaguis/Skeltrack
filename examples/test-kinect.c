@@ -32,6 +32,9 @@ typedef struct
   gint reduced_height;
 } BufferInfo;
 
+GTimer *timer;
+GList *measures = NULL;
+
 static void
 on_track_joints (GObject      *obj,
                  GAsyncResult *res,
@@ -54,6 +57,11 @@ on_track_joints (GObject      *obj,
                                                  res,
                                                  &error);
 
+  gdouble *measure = g_slice_alloc (sizeof(gdouble));
+  *measure = g_timer_elapsed (timer, NULL);
+  measures = g_list_append (measures, (gpointer) measure);
+
+
   if (error == NULL)
     {
       if (SHOW_SKELETON)
@@ -61,7 +69,6 @@ on_track_joints (GObject      *obj,
     }
   else
     {
-      g_warning ("%s\n", error->message);
       g_error_free (error);
     }
 
@@ -190,6 +197,7 @@ on_depth_frame (GFreenectDevice *kinect, gpointer user_data)
                                 THRESHOLD_BEGIN,
                                 THRESHOLD_END);
 
+  timer = g_timer_new();
   skeltrack_skeleton_track_joints (skeleton,
                                    buffer_info->reduced_buffer,
                                    buffer_info->reduced_width,
@@ -596,6 +604,19 @@ main (int argc, char *argv[])
     {
       g_object_unref (skeleton);
     }
+  GList *node_list;
+  gdouble sum = 0;
+  gint count = 0;
+  for (node_list = g_list_first (measures);
+       node_list != NULL;
+       node_list = g_list_next (node_list))
+    {
+      gdouble *value = (gdouble *) node_list->data;
+      sum += *value;
+      count++;
+    }
+
+  printf ("Average execution time: %f\n", sum/count);
 
   return 0;
 }
