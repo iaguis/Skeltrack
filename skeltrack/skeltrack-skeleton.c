@@ -141,6 +141,8 @@ enum
 
 static void     skeltrack_skeleton_class_init         (SkeltrackSkeletonClass *class);
 static void     skeltrack_skeleton_init               (SkeltrackSkeleton *self);
+static void     skeltrack_skeleton_finalize           (GObject *obj);
+static void     skeltrack_skeleton_dispose            (GObject *obj);
 
 static void     skeltrack_skeleton_set_property       (GObject *obj,
                                                        guint prop_id,
@@ -165,6 +167,8 @@ skeltrack_skeleton_class_init (SkeltrackSkeletonClass *class)
 
   obj_class = G_OBJECT_CLASS (class);
 
+  obj_class->dispose = skeltrack_skeleton_dispose;
+  obj_class->finalize = skeltrack_skeleton_finalize;
   obj_class->get_property = skeltrack_skeleton_get_property;
   obj_class->set_property = skeltrack_skeleton_set_property;
 
@@ -423,6 +427,26 @@ init_opencl_structures (SkeltrackSkeleton *self)
   priv->ocl_data->mD = g_slice_alloc0 (sizeof (gint));
 
   ocl_init (priv->ocl_data, size);
+}
+
+static void
+skeltrack_skeleton_dispose (GObject *obj)
+{
+  /* TODO: cancel any cancellable to interrupt joints tracking operation */
+
+  G_OBJECT_CLASS (skeltrack_skeleton_parent_class)->dispose (obj);
+}
+
+static void
+skeltrack_skeleton_finalize (GObject *obj)
+{
+  SkeltrackSkeleton *self = SKELTRACK_SKELETON (obj);
+
+  g_mutex_clear (&self->priv->track_joints_mutex);
+
+  clean_tracking_resources (self);
+
+  G_OBJECT_CLASS (skeltrack_skeleton_parent_class)->finalize (obj);
 }
 
 static void
@@ -913,8 +937,11 @@ check_if_node_can_be_head (GList *nodes,
     {
       *right_shoulder = right_shoulder_closest_point;
       *left_shoulder = left_shoulder_closest_point;
+
+      g_slice_free (Node, shoulder_point);
       return TRUE;
     }
+    g_slice_free (Node, shoulder_point);
   return FALSE;
 }
 
