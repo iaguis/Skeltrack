@@ -497,6 +497,7 @@ ocl_ccl (oclData *data,
       check_error (err_num, CL_SUCCESS);
 
       clWaitForEvents (1, &read_done);
+      clReleaseEvent (read_done);
     } while (*(data->mD));
   err_num = clEnqueueReadBuffer (data->command_queue,
       data->labels_matrix_device, CL_FALSE, 0, sizeof (guint) * size,
@@ -504,6 +505,7 @@ ocl_ccl (oclData *data,
   check_error (err_num, CL_SUCCESS);
 
   clWaitForEvents (1, &read_done);
+  clReleaseEvent (read_done);
 
   return;
 }
@@ -561,6 +563,8 @@ ocl_make_graph (oclData *data,
   check_error (err_num, CL_SUCCESS);
 
   clWaitForEvents (2, read_done);
+  clReleaseEvent (read_done[0]);
+  clReleaseEvent (read_done[1]);
 }
 
 gint *
@@ -628,6 +632,7 @@ ocl_join_to_biggest (oclData *data,
   check_error (err_num, CL_SUCCESS);
 
   clWaitForEvents (1, &read_done);
+  clReleaseEvent (read_done);
 
   return close_node;
 }
