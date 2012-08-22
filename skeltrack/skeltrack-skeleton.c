@@ -1405,11 +1405,6 @@ clean_tracking_resources (SkeltrackSkeleton *self)
                     self->priv->ocl_data->previous_matrix);
       self->priv->ocl_data->previous_matrix = NULL;
 
-      g_slice_free1 (self->priv->buffer_width *
-                    self->priv->buffer_height * sizeof (guint),
-                    self->priv->ocl_data->labels_matrix);
-      self->priv->ocl_data->labels_matrix = NULL;
-
       g_slice_free1 (sizeof (gint),
                     self->priv->ocl_data->mD);
       self->priv->ocl_data->mD = NULL;
@@ -1424,7 +1419,6 @@ clean_tracking_resources (SkeltrackSkeleton *self)
       clReleaseMemObject (self->priv->ocl_data->labels_matrix_device);
       clReleaseMemObject (self->priv->ocl_data->mD_device);
       clReleaseMemObject (self->priv->ocl_data->close_node_device);
-
 
       clReleaseKernel (self->priv->ocl_data->initialize_graph_kernel);
       clReleaseKernel (self->priv->ocl_data->mesh_kernel);
