@@ -60,7 +60,7 @@ on_track_joints (GObject      *obj,
   gdouble *measure = g_slice_alloc (sizeof(gdouble));
   *measure = g_timer_elapsed (timer, NULL);
   measures = g_list_append (measures, (gpointer) measure);
-
+  printf ("Time: %f\n", *measure);
 
   if (error == NULL)
     {
@@ -69,6 +69,7 @@ on_track_joints (GObject      *obj,
     }
   else
     {
+      g_warning ("%s\n", error->message);
       g_error_free (error);
     }
 
