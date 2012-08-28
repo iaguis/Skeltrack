@@ -59,6 +59,8 @@
 #include <math.h>
 #include <stdlib.h>
 
+#include <stdio.h>
+
 #ifdef __APPLE__
   #include <OpenCL/cl.h>
 #else
@@ -1230,6 +1232,7 @@ set_left_and_right_from_extremas (SkeltrackSkeleton *self,
 static SkeltrackJoint **
 track_joints (SkeltrackSkeleton *self)
 {
+  GTimer *timer = g_timer_new();
   Node * centroid;
   Node *head = NULL;
   Node *right_shoulder = NULL;
@@ -1368,6 +1371,8 @@ track_joints (SkeltrackSkeleton *self)
     }
   g_list_free (extremas);
 
+  g_timer_stop (timer);
+  printf ("%f\n", g_timer_elapsed (timer, NULL));
   return joints;
 }
 

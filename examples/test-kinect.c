@@ -57,11 +57,6 @@ on_track_joints (GObject      *obj,
                                                  res,
                                                  &error);
 
-  gdouble *measure = g_slice_alloc (sizeof(gdouble));
-  *measure = g_timer_elapsed (timer, NULL);
-  measures = g_list_append (measures, (gpointer) measure);
-  printf ("Time: %f\n", *measure);
-
   if (error == NULL)
     {
       if (SHOW_SKELETON)
@@ -198,7 +193,6 @@ on_depth_frame (GFreenectDevice *kinect, gpointer user_data)
                                 THRESHOLD_BEGIN,
                                 THRESHOLD_END);
 
-  timer = g_timer_new();
   skeltrack_skeleton_track_joints (skeleton,
                                    buffer_info->reduced_buffer,
                                    buffer_info->reduced_width,
