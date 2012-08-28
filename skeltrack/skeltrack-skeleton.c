@@ -595,7 +595,7 @@ make_graph (SkeltrackSkeleton *self)
 
   data = priv->ocl_data;
 
-  ocl_ccl (data, priv->buffer, width, height);
+  ocl_ccl (data, priv->buffer, width, height, 1);
 
   histogram = g_slice_alloc0 (sizeof (guint) * width * height);
 
