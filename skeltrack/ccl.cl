@@ -206,7 +206,8 @@ join_to_biggest (__global unsigned int *labels,
                  int dist_y,
                  int dist_z,
                  int width,
-                 int height)
+                 int height,
+                 int dimension_reduction)
 {
   int i, j, x, y, from_x, from_y, dx, dy, dz, node, from_node;
 
@@ -219,8 +220,8 @@ join_to_biggest (__global unsigned int *labels,
   if (labels[node] == biggest)
     {
       // FIXME dimension_reduction should not be fixed
-      convert_screen_coords_to_mm (width, height, 16, i, j, buffer[node], &x, &y);
-      convert_screen_coords_to_mm (width, height, 16, from_node_i, from_node_j, buffer[from_node], &from_x, &from_y);
+      convert_screen_coords_to_mm (width, height, dimension_reduction, i, j, buffer[node], &x, &y);
+      convert_screen_coords_to_mm (width, height, dimension_reduction, from_node_i, from_node_j, buffer[from_node], &from_x, &from_y);
 
       dx = abs (x - from_x);
       dy = abs (y - from_y);
@@ -242,7 +243,8 @@ make_graph (__global unsigned short *buffer,
             __global int *weight_matrix,
             int width,
             int height,
-            int label)
+            int label,
+            int dimension_reduction)
 {
   int i, j, node, size, index;
 
@@ -275,8 +277,8 @@ make_graph (__global unsigned short *buffer,
                           z_neigh = buffer[neighbor];
 
                           // FIXME dimension_reduction should not be fixed
-                          convert_screen_coords_to_mm (width, height, 16, i, j, z_node, &x_node, &y_node);
-                          convert_screen_coords_to_mm (width, height, 16, k, l, z_neigh, &x_neigh, &y_neigh);
+                          convert_screen_coords_to_mm (width, height, dimension_reduction, i, j, z_node, &x_node, &y_node);
+                          convert_screen_coords_to_mm (width, height, dimension_reduction, k, l, z_neigh, &x_neigh, &y_neigh);
 
                           edge_matrix[node * NEIGHBOR_SIZE + index] = neighbor;
                           weight_matrix[node * NEIGHBOR_SIZE + index] = get_distance (x_node, y_node, z_node, x_neigh, y_neigh, z_neigh);

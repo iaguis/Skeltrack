@@ -514,7 +514,8 @@ void
 ocl_make_graph (oclData *data,
                 gint width,
                 gint height,
-                gint label)
+                gint label,
+                gint dimension_reduction)
 {
   cl_int err_num;
   cl_event read_done[2];
@@ -544,7 +545,9 @@ ocl_make_graph (oclData *data,
   err_num |= clSetKernelArg (data->make_graph_kernel, 5, sizeof (gint),
         &(height));
   err_num |= clSetKernelArg (data->make_graph_kernel, 6, sizeof (gint),
-        &(label));
+      &(label));
+  err_num |= clSetKernelArg (data->make_graph_kernel, 7, sizeof (gint),
+        &(dimension_reduction));
   check_error (err_num, CL_SUCCESS);
 
   err_num = clEnqueueNDRangeKernel (data->command_queue,
@@ -576,7 +579,8 @@ ocl_join_to_biggest (oclData *data,
                      gint dist_y,
                      gint dist_z,
                      gint width,
-                     gint height)
+                     gint height,
+                     gint dimension_reduction)
 {
   cl_int err_num;
   cl_event read_done;
@@ -620,6 +624,8 @@ ocl_join_to_biggest (oclData *data,
       &(width));
   err_num |= clSetKernelArg (data->join_to_biggest_kernel, 10, sizeof (int),
       &(height));
+  err_num |= clSetKernelArg (data->join_to_biggest_kernel, 11, sizeof (gint),
+      &(dimension_reduction));
   check_error (err_num, CL_SUCCESS);
 
   err_num = clEnqueueNDRangeKernel (data->command_queue,
