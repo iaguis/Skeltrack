@@ -359,6 +359,10 @@ ocl_init_labeling (oclData *data,
       sizeof (gint) * 2, NULL, &err_num);
   check_error (err_num, CL_SUCCESS);
 
+  data->equiv_list_device = clCreateBuffer (data->context, CL_MEM_READ_WRITE,
+      sizeof (guint) * matrix_size, NULL, &err_num);
+  check_error (err_num, CL_SUCCESS);
+
   /* Create kernels */
   data->initialize_graph_kernel = clCreateKernel (data->program,
       "initialize_graph", &err_num);
@@ -373,6 +377,22 @@ ocl_init_labeling (oclData *data,
 
   data->join_to_biggest_kernel = clCreateKernel (data->program,
       "join_to_biggest", &err_num);
+  check_error (err_num, CL_SUCCESS);
+
+  data->mesh_kernel_2_init = clCreateKernel (data->program,
+      "mesh_kernel_2_init", &err_num);
+  check_error (err_num, CL_SUCCESS);
+
+  data->mesh_kernel_2_scanning = clCreateKernel (data->program,
+      "mesh_kernel_2_scanning", &err_num);
+  check_error (err_num, CL_SUCCESS);
+
+  data->mesh_kernel_2_analysis = clCreateKernel (data->program,
+      "mesh_kernel_2_analysis", &err_num);
+  check_error (err_num, CL_SUCCESS);
+
+  data->mesh_kernel_2_labeling = clCreateKernel (data->program,
+      "mesh_kernel_2_labeling", &err_num);
   check_error (err_num, CL_SUCCESS);
 }
 
@@ -420,7 +440,8 @@ void
 ocl_ccl (oclData *data,
          guint16 *buffer,
          gint width,
-         gint height)
+         gint height,
+         gint version)
 {
   gint size;
   cl_int err_num;
@@ -439,73 +460,166 @@ ocl_ccl (oclData *data,
   global_worksize[1] = round_worksize_up (local_worksize[1], height);
 
   err_num = CL_SUCCESS;
-  err_num |= clSetKernelArg (data->mesh_kernel, 0, sizeof (cl_mem),
-      &(data->buffer_matrix_device));
-  err_num |= clSetKernelArg (data->mesh_kernel, 1, sizeof (cl_mem),
-      &(data->labels_matrix_device));
-  err_num |= clSetKernelArg (data->mesh_kernel, 2, sizeof (cl_mem),
-      &(data->mD_device));
-  err_num |= clSetKernelArg (data->mesh_kernel, 3, sizeof (gint),
-      &width);
-  err_num |= clSetKernelArg (data->mesh_kernel, 4, sizeof (gint),
-      &height);
-  err_num |= clSetKernelArg (data->mesh_kernel, 5, local_worksize[0] *
-      local_worksize[1] * sizeof (guint), NULL);
-  check_error (err_num, CL_SUCCESS);
 
-  err_num |= clSetKernelArg (data->initialize_graph_kernel, 0, sizeof (cl_mem),
-      &(data->labels_matrix_device));
-  err_num |= clSetKernelArg (data->initialize_graph_kernel, 1, sizeof (cl_mem),
-      &(data->edge_matrix_device));
-  err_num |= clSetKernelArg (data->initialize_graph_kernel, 2, sizeof (cl_mem),
-      &(data->weight_matrix_device));
-  err_num |= clSetKernelArg (data->initialize_graph_kernel, 3, sizeof (gint), &size);
-  check_error (err_num, CL_SUCCESS);
-
-  // Copy new data to device
-  err_num = clEnqueueWriteBuffer (data->command_queue,
-      data->buffer_matrix_device, CL_FALSE, 0, sizeof (guint16) * size,
-      buffer, 0, NULL, NULL);
-  check_error (err_num, CL_SUCCESS);
-
-  err_num = clEnqueueWriteBuffer (data->command_queue, data->mD_device,
-      CL_FALSE, 0, sizeof (gint), data->mD, 0, NULL, NULL);
-  check_error (err_num, CL_SUCCESS);
-
-  init_worksize = size;
-
-  err_num = clEnqueueNDRangeKernel (data->command_queue,
-      data->initialize_graph_kernel, 1, NULL, &init_worksize, NULL, 0, NULL, NULL);
-  check_error (err_num, CL_SUCCESS);
-
-  do
+  if (version == 0)
     {
-      /* TODO maybe do this in the device as it could be faster (avoids data
-         transfer) */
-      *(data->mD) = 0;
-      err_num = clEnqueueWriteBuffer (data->command_queue, data->mD_device,
-      CL_FALSE, 0, sizeof (gint), data->mD, 0, NULL, NULL);
+      err_num |= clSetKernelArg (data->mesh_kernel, 0, sizeof (cl_mem),
+          &(data->buffer_matrix_device));
+      err_num |= clSetKernelArg (data->mesh_kernel, 1, sizeof (cl_mem),
+          &(data->labels_matrix_device));
+      err_num |= clSetKernelArg (data->mesh_kernel, 2, sizeof (cl_mem),
+          &(data->mD_device));
+      err_num |= clSetKernelArg (data->mesh_kernel, 3, sizeof (gint),
+          &width);
+      err_num |= clSetKernelArg (data->mesh_kernel, 4, sizeof (gint),
+          &height);
+      err_num |= clSetKernelArg (data->mesh_kernel, 5, local_worksize[0] *
+          local_worksize[1] * sizeof (guint), NULL);
       check_error (err_num, CL_SUCCESS);
 
-      err_num = clEnqueueNDRangeKernel (data->command_queue, data->mesh_kernel,
-          2, NULL, global_worksize, local_worksize, 0, NULL, NULL);
+      err_num |= clSetKernelArg (data->initialize_graph_kernel, 0, sizeof (cl_mem),
+          &(data->labels_matrix_device));
+      err_num |= clSetKernelArg (data->initialize_graph_kernel, 1, sizeof (cl_mem),
+          &(data->edge_matrix_device));
+      err_num |= clSetKernelArg (data->initialize_graph_kernel, 2, sizeof (cl_mem),
+          &(data->weight_matrix_device));
+      err_num |= clSetKernelArg (data->initialize_graph_kernel, 3, sizeof (gint), &size);
       check_error (err_num, CL_SUCCESS);
 
+      // Copy new data to device
+      err_num = clEnqueueWriteBuffer (data->command_queue,
+          data->buffer_matrix_device, CL_FALSE, 0, sizeof (guint16) * size,
+          buffer, 0, NULL, NULL);
+      check_error (err_num, CL_SUCCESS);
 
-      err_num = clEnqueueReadBuffer (data->command_queue, data->mD_device, CL_FALSE, 0,
-      sizeof (gint), data->mD, 0, NULL, &read_done);
+      init_worksize = size;
+
+      err_num = clEnqueueNDRangeKernel (data->command_queue,
+          data->initialize_graph_kernel, 1, NULL, &init_worksize, NULL, 0, NULL, NULL);
+      check_error (err_num, CL_SUCCESS);
+
+      do
+        {
+          *(data->mD) = 0;
+          err_num = clEnqueueWriteBuffer (data->command_queue, data->mD_device,
+          CL_FALSE, 0, sizeof (gint), data->mD, 0, NULL, NULL);
+          check_error (err_num, CL_SUCCESS);
+
+          err_num = clEnqueueNDRangeKernel (data->command_queue, data->mesh_kernel,
+              2, NULL, global_worksize, local_worksize, 0, NULL, NULL);
+          check_error (err_num, CL_SUCCESS);
+
+          err_num = clEnqueueReadBuffer (data->command_queue, data->mD_device, CL_FALSE, 0,
+          sizeof (gint), data->mD, 0, NULL, &read_done);
+          check_error (err_num, CL_SUCCESS);
+
+          clWaitForEvents (1, &read_done);
+          clReleaseEvent (read_done);
+        } while (*(data->mD));
+      err_num = clEnqueueReadBuffer (data->command_queue,
+          data->labels_matrix_device, CL_FALSE, 0, sizeof (guint) * size,
+          data->labels_matrix, 0, NULL, &read_done);
       check_error (err_num, CL_SUCCESS);
 
       clWaitForEvents (1, &read_done);
       clReleaseEvent (read_done);
-    } while (*(data->mD));
-  err_num = clEnqueueReadBuffer (data->command_queue,
-      data->labels_matrix_device, CL_FALSE, 0, sizeof (guint) * size,
-      data->labels_matrix, 0, NULL, &read_done);
-  check_error (err_num, CL_SUCCESS);
+    }
+  else if (version == 1)
+    {
+      err_num |= clSetKernelArg (data->mesh_kernel_2_init, 0, sizeof (cl_mem),
+          &(data->labels_matrix_device));
+      err_num |= clSetKernelArg (data->mesh_kernel_2_init, 1, sizeof (cl_mem),
+          &(data->equiv_list_device));
+      err_num |= clSetKernelArg (data->mesh_kernel_2_init, 2, sizeof (cl_mem),
+          &(data->edge_matrix_device));
+      err_num |= clSetKernelArg (data->mesh_kernel_2_init, 3, sizeof (cl_mem),
+          &(data->weight_matrix_device));
+      check_error (err_num, CL_SUCCESS);
+      err_num |= clSetKernelArg (data->mesh_kernel_2_init, 4, sizeof (gint),
+          &size);
+      check_error (err_num, CL_SUCCESS);
 
-  clWaitForEvents (1, &read_done);
-  clReleaseEvent (read_done);
+      err_num |= clSetKernelArg (data->mesh_kernel_2_scanning, 0, sizeof
+          (cl_mem), &(data->buffer_matrix_device));
+      err_num |= clSetKernelArg (data->mesh_kernel_2_scanning, 1, sizeof
+          (cl_mem), &(data->labels_matrix_device));
+      err_num |= clSetKernelArg (data->mesh_kernel_2_scanning, 2, sizeof
+          (cl_mem), &(data->equiv_list_device));
+      err_num |= clSetKernelArg (data->mesh_kernel_2_scanning, 3, sizeof
+          (cl_mem), &(data->mD_device));
+      err_num |= clSetKernelArg (data->mesh_kernel_2_scanning, 4, sizeof
+          (gint), &width);
+      err_num |= clSetKernelArg (data->mesh_kernel_2_scanning, 5, sizeof
+          (gint), &height);
+      check_error (err_num, CL_SUCCESS);
+
+      err_num |= clSetKernelArg (data->mesh_kernel_2_analysis, 0, sizeof
+          (cl_mem), &(data->labels_matrix_device));
+      err_num |= clSetKernelArg (data->mesh_kernel_2_analysis, 1, sizeof
+          (cl_mem), &(data->equiv_list_device));
+      err_num |= clSetKernelArg (data->mesh_kernel_2_analysis, 2, sizeof
+          (gint), &size);
+      check_error (err_num, CL_SUCCESS);
+
+      err_num |= clSetKernelArg (data->mesh_kernel_2_labeling, 0, sizeof
+          (cl_mem), &(data->buffer_matrix_device));
+      err_num |= clSetKernelArg (data->mesh_kernel_2_labeling, 1, sizeof
+          (cl_mem), &(data->labels_matrix_device));
+      err_num |= clSetKernelArg (data->mesh_kernel_2_labeling, 2, sizeof
+          (cl_mem), &(data->equiv_list_device));
+      err_num |= clSetKernelArg (data->mesh_kernel_2_labeling, 3, sizeof
+          (gint), &size);
+      check_error (err_num, CL_SUCCESS);
+
+      // Copy new data to device
+      err_num = clEnqueueWriteBuffer (data->command_queue,
+          data->buffer_matrix_device, CL_FALSE, 0, sizeof (guint16) * size,
+          buffer, 0, NULL, NULL);
+      check_error (err_num, CL_SUCCESS);
+
+      init_worksize = size;
+
+      err_num = clEnqueueNDRangeKernel (data->command_queue,
+          data->mesh_kernel_2_init, 1, NULL, &init_worksize, NULL, 0, NULL, NULL);
+      check_error (err_num, CL_SUCCESS);
+
+      do
+        {
+          *(data->mD) = 0;
+          err_num = clEnqueueWriteBuffer (data->command_queue, data->mD_device,
+          CL_FALSE, 0, sizeof (gint), data->mD, 0, NULL, NULL);
+          check_error (err_num, CL_SUCCESS);
+
+          err_num = clEnqueueNDRangeKernel (data->command_queue,
+              data->mesh_kernel_2_scanning, 2, NULL, global_worksize,
+              local_worksize, 0, NULL, NULL);
+          check_error (err_num, CL_SUCCESS);
+
+          err_num = clEnqueueNDRangeKernel (data->command_queue,
+              data->mesh_kernel_2_analysis, 1, NULL, &init_worksize,
+              NULL, 0, NULL, NULL);
+          check_error (err_num, CL_SUCCESS);
+
+          err_num = clEnqueueNDRangeKernel (data->command_queue,
+              data->mesh_kernel_2_labeling, 1, NULL, &init_worksize,
+              NULL, 0, NULL, NULL);
+          check_error (err_num, CL_SUCCESS);
+
+          err_num = clEnqueueReadBuffer (data->command_queue, data->mD_device, CL_FALSE, 0,
+          sizeof (gint), data->mD, 0, NULL, &read_done);
+          check_error (err_num, CL_SUCCESS);
+
+          clWaitForEvents (1, &read_done);
+          clReleaseEvent (read_done);
+        } while (*(data->mD));
+      err_num = clEnqueueReadBuffer (data->command_queue,
+          data->labels_matrix_device, CL_FALSE, 0, sizeof (guint) * size,
+          data->labels_matrix, 0, NULL, &read_done);
+      check_error (err_num, CL_SUCCESS);
+
+      clWaitForEvents (1, &read_done);
+      clReleaseEvent (read_done);
+    }
 
   return;
 }
@@ -514,7 +628,8 @@ void
 ocl_make_graph (oclData *data,
                 gint width,
                 gint height,
-                gint label)
+                gint label,
+                gint dimension_reduction)
 {
   cl_int err_num;
   cl_event read_done[2];
@@ -545,6 +660,8 @@ ocl_make_graph (oclData *data,
         &(height));
   err_num |= clSetKernelArg (data->make_graph_kernel, 6, sizeof (gint),
         &(label));
+  err_num |= clSetKernelArg (data->make_graph_kernel, 7, sizeof (gint),
+        &(dimension_reduction));
   check_error (err_num, CL_SUCCESS);
 
   err_num = clEnqueueNDRangeKernel (data->command_queue,
@@ -576,7 +693,8 @@ ocl_join_to_biggest (oclData *data,
                      gint dist_y,
                      gint dist_z,
                      gint width,
-                     gint height)
+                     gint height,
+                     gint dimension_reduction)
 {
   cl_int err_num;
   cl_event read_done;
@@ -620,6 +738,8 @@ ocl_join_to_biggest (oclData *data,
       &(width));
   err_num |= clSetKernelArg (data->join_to_biggest_kernel, 10, sizeof (int),
       &(height));
+  err_num |= clSetKernelArg (data->join_to_biggest_kernel, 11, sizeof (gint),
+      &(dimension_reduction));
   check_error (err_num, CL_SUCCESS);
 
   err_num = clEnqueueNDRangeKernel (data->command_queue,

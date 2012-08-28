@@ -196,6 +196,139 @@ mesh_kernel (__global unsigned short *buffer,
 }
 
 __kernel void
+mesh_kernel_2_init (__global unsigned int *labels,
+                    __global unsigned int *equiv_list,
+                    __global int *edge_matrix,
+                    __global int *weight_matrix,
+                    int size)
+{
+  int tid;
+
+  tid = get_global_id (0);
+
+  if (tid < size)
+    {
+      labels[tid] = tid;
+      equiv_list[tid] = tid;
+
+      for (int i = 0; i < NEIGHBOR_SIZE; i++)
+        {
+          edge_matrix[(tid * NEIGHBOR_SIZE) + i] = -1;
+          weight_matrix[(tid * NEIGHBOR_SIZE) + i] = -1;
+        }
+    }
+}
+
+__kernel void
+mesh_kernel_2_scanning (__global unsigned short *buffer,
+                        __global unsigned int *labels,
+                        __global unsigned int *equiv_list,
+                        __global unsigned int *mD,
+                        int width,
+                        int height)
+{
+  unsigned int id, label1, label2, i, j, z;
+  int nId[NEIGHBOR_SIZE];
+  int size;
+  int index;
+
+  i = get_global_id (1);
+  j = get_global_id (0);
+
+  id = i * width + j;
+
+  size = width*height;
+
+  if (id < size)
+    {
+      label1 = labels[id];
+      label2 = INT_MAX;
+      index = 0;
+      
+      for (int k = (i-1); k <= (i+1); k++)
+        {
+          for (int l = (j-1); l <= (j+1); l++)
+            {
+              if (k >= 0 && k < height && l >= 0 && l < width && (k != i || l != j))
+                {
+                  unsigned int neighbor = k * width + l;
+
+                  if ((buffer[id] == 0) && (buffer[neighbor] == 0))
+                    {
+                      nId[index] = neighbor;
+                      index++;
+                    }
+                  else
+                  if ((buffer[id] != 0) && (buffer[neighbor] != 0))
+                    {
+                      nId[index] = neighbor;
+                      index++;
+                    }
+                }
+            }
+        }
+
+      for (z = 0; z < index; z++)
+        {
+          label2 = min (label2, labels[nId[z]]);
+        }
+      
+      if (label2 < label1)
+        {
+          atomic_min (&(equiv_list[label1]), label2);
+          *mD = 1;
+        }
+    }
+}
+
+__kernel void
+mesh_kernel_2_analysis (__global unsigned int *labels,
+                        __global unsigned int *equiv_list,
+                        int size)
+{
+  int id, ref, label;
+
+  id = get_global_id (0);
+
+  if (id < size)
+    {
+      if (labels[id] == id)
+        {
+          ref = equiv_list[id];
+          do
+            {
+              label = ref;
+              ref = equiv_list[ref];
+            } while (ref != equiv_list[label]);
+          equiv_list[id] = ref;
+        }
+    }
+}
+
+__kernel void
+mesh_kernel_2_labeling (__global unsigned short *buffer,
+                        __global unsigned int *labels,
+                        __global unsigned int *equiv_list,
+                        int size)
+{
+  int id;
+
+  id = get_global_id (0);
+
+  if (id < size)
+    {
+      if (buffer[id] != 0)
+        {
+          labels[id] = equiv_list[labels[id]];
+        }
+      else
+        {
+          labels[id] = 0;
+        }
+    }
+}
+
+__kernel void
 join_to_biggest (__global unsigned int *labels,
                  __global unsigned short *buffer,
                  __global unsigned int *close_node,
@@ -206,7 +339,8 @@ join_to_biggest (__global unsigned int *labels,
                  int dist_y,
                  int dist_z,
                  int width,
-                 int height)
+                 int height,
+                 int dimension_reduction)
 {
   int i, j, x, y, from_x, from_y, dx, dy, dz, node, from_node;
 
@@ -219,8 +353,8 @@ join_to_biggest (__global unsigned int *labels,
   if (labels[node] == biggest)
     {
       // FIXME dimension_reduction should not be fixed
-      convert_screen_coords_to_mm (width, height, 16, i, j, buffer[node], &x, &y);
-      convert_screen_coords_to_mm (width, height, 16, from_node_i, from_node_j, buffer[from_node], &from_x, &from_y);
+      convert_screen_coords_to_mm (width, height, dimension_reduction, i, j, buffer[node], &x, &y);
+      convert_screen_coords_to_mm (width, height, dimension_reduction, from_node_i, from_node_j, buffer[from_node], &from_x, &from_y);
 
       dx = abs (x - from_x);
       dy = abs (y - from_y);
@@ -242,7 +376,8 @@ make_graph (__global unsigned short *buffer,
             __global int *weight_matrix,
             int width,
             int height,
-            int label)
+            int label,
+            int dimension_reduction)
 {
   int i, j, node, size, index;
 
@@ -275,8 +410,8 @@ make_graph (__global unsigned short *buffer,
                           z_neigh = buffer[neighbor];
 
                           // FIXME dimension_reduction should not be fixed
-                          convert_screen_coords_to_mm (width, height, 16, i, j, z_node, &x_node, &y_node);
-                          convert_screen_coords_to_mm (width, height, 16, k, l, z_neigh, &x_neigh, &y_neigh);
+                          convert_screen_coords_to_mm (width, height, dimension_reduction, i, j, z_node, &x_node, &y_node);
+                          convert_screen_coords_to_mm (width, height, dimension_reduction, k, l, z_neigh, &x_neigh, &y_neigh);
 
                           edge_matrix[node * NEIGHBOR_SIZE + index] = neighbor;
                           weight_matrix[node * NEIGHBOR_SIZE + index] = get_distance (x_node, y_node, z_node, x_neigh, y_neigh, z_neigh);

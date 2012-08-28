@@ -30,10 +30,18 @@ typedef struct {
   cl_mem mD_device;
   cl_mem close_node_device;
 
+  cl_mem equiv_list_device;
+
   cl_kernel initialize_graph_kernel;
+  cl_kernel clear_mD_kernel;
   cl_kernel mesh_kernel;
   cl_kernel make_graph_kernel;
   cl_kernel join_to_biggest_kernel;
+
+  cl_kernel mesh_kernel_2_init;
+  cl_kernel mesh_kernel_2_scanning;
+  cl_kernel mesh_kernel_2_analysis;
+  cl_kernel mesh_kernel_2_labeling;
 } oclData;
 
 void        ocl_init                    (oclData                 *data,
@@ -42,12 +50,14 @@ void        ocl_init                    (oclData                 *data,
 void        ocl_ccl                     (oclData                 *data,
                                          guint16                 *buffer,
                                          gint                     width,
-                                         gint                     height);
+                                         gint                     height,
+                                         gint                     version);
 
 void        ocl_make_graph              (oclData                 *data,
                                          gint                     width,
                                          gint                     height,
-                                         gint                     label);
+                                         gint                     label,
+                                         gint                     dimension_reduction);
 
 gint *      ocl_join_to_biggest         (oclData                 *data,
                                          gint                     i,
@@ -57,5 +67,6 @@ gint *      ocl_join_to_biggest         (oclData                 *data,
                                          gint                     dist_y,
                                          gint                     dist_z,
                                          gint                     width,
-                                         gint                     height);
+                                         gint                     height,
+                                         gint                     dimension_reduction);
 

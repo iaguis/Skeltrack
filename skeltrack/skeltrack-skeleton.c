@@ -595,7 +595,7 @@ make_graph (SkeltrackSkeleton *self)
 
   data = priv->ocl_data;
 
-  ocl_ccl (data, priv->buffer, width, height);
+  ocl_ccl (data, priv->buffer, width, height, 1);
 
   histogram = g_slice_alloc0 (sizeof (guint) * width * height);
 
@@ -612,7 +612,7 @@ make_graph (SkeltrackSkeleton *self)
 
   g_slice_free1 (sizeof (guint) * width * height, histogram);
 
-  ocl_make_graph (data, width, height, biggest);
+  ocl_make_graph (data, width, height, biggest, DIMENSION_REDUCTION);
 
   gboolean label_done = FALSE;
   gint current_label = -1;
@@ -635,7 +635,8 @@ make_graph (SkeltrackSkeleton *self)
             {
               close_node = ocl_join_to_biggest(data, i, j, biggest,
                   priv->distance_threshold, priv->distance_threshold,
-                  priv->hands_minimum_distance, width, height);
+                  priv->hands_minimum_distance, width, height,
+                  DIMENSION_REDUCTION);
 
               node = close_node[0];
               dist = close_node[1];
