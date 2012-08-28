@@ -590,11 +590,6 @@ make_graph (SkeltrackSkeleton *self)
               width * height * sizeof (Node *));
     }
 
-  if (priv->ocl_data == NULL)
-    {
-      init_opencl_structures (self);
-    }
-
   data = priv->ocl_data;
 
   ocl_ccl (data, priv->buffer, width, height, 1);
@@ -1241,6 +1236,13 @@ track_joints (SkeltrackSkeleton *self)
   SkeltrackJointList joints = NULL;
   SkeltrackJointList smoothed = NULL;
 
+  GTimer *timer2 = g_timer_new();
+  if (self->priv->ocl_data == NULL)
+    {
+      init_opencl_structures (self);
+    }
+  g_timer_stop (timer2);
+
   self->priv->graph = make_graph (self);
   centroid = get_centroid (self);
   extremas = get_extremas (self, centroid);
@@ -1372,7 +1374,8 @@ track_joints (SkeltrackSkeleton *self)
   g_list_free (extremas);
 
   g_timer_stop (timer);
-  printf ("%f\n", g_timer_elapsed (timer, NULL));
+  printf ("\n%f\n", g_timer_elapsed (timer, NULL) - g_timer_elapsed (timer2,
+        NULL));
   return joints;
 }
 
