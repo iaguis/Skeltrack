@@ -192,7 +192,7 @@ on_depth_frame (GFreenectDevice *kinect, gpointer user_data)
   gint dimension_factor;
   guchar *grayscale_buffer;
   guint16 *depth;
-  guint16 *transformed_depth;
+  guint16 *transformed_depth = NULL;
   BufferInfo *buffer_info;
   gsize len;
   GError *error = NULL;
@@ -234,6 +234,9 @@ on_depth_frame (GFreenectDevice *kinect, gpointer user_data)
                                 THRESHOLD_BEGIN,
                                 THRESHOLD_END);
 
+  g_slice_free1 (width * height * sizeof (guint16), transformed_depth);
+
+
   skeltrack_skeleton_track_joints (skeleton,
                                    buffer_info->reduced_buffer,
                                    buffer_info->reduced_width,
@@ -261,6 +264,8 @@ on_depth_frame (GFreenectDevice *kinect, gpointer user_data)
         }
       g_slice_free1 (width * height * sizeof (guchar) * 3, grayscale_buffer);
     }
+
+  transformed_depth = NULL;
 }
 
 static void
