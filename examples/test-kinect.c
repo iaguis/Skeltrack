@@ -23,7 +23,7 @@ static gfloat SMOOTHING_FACTOR = .0;
 static guint THRESHOLD_BEGIN = 500;
 /* Adjust this value to increase of decrease
    the threshold */
-static guint THRESHOLD_END   = 1500;
+static guint THRESHOLD_END   = 8000;
 
 typedef struct
 {
@@ -395,7 +395,7 @@ set_threshold (gint difference)
 {
   gint new_threshold = THRESHOLD_END + difference;
   if (new_threshold >= THRESHOLD_BEGIN + 300 &&
-      new_threshold <= 4000)
+      new_threshold <= 8000)
     THRESHOLD_END = new_threshold;
 }
 
