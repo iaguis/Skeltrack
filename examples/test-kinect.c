@@ -12,6 +12,7 @@ static GFreenectDevice *kinect = NULL;
 static ClutterActor *info_text;
 static ClutterActor *depth_tex;
 static ClutterActor *video_tex;
+static ClutterActor *instructions;
 static SkeltrackJointList list = NULL;
 
 static gboolean SHOW_SKELETON = TRUE;
@@ -23,6 +24,11 @@ static guint THRESHOLD_BEGIN = 500;
    the threshold */
 static guint THRESHOLD_END   = 8000;
 
+static gint width = 640;
+static gint height = 480;
+
+static gboolean VERTICAL = FALSE;
+
 typedef struct
 {
   guint16 *reduced_buffer;
@@ -31,6 +37,23 @@ typedef struct
   gint reduced_width;
   gint reduced_height;
 } BufferInfo;
+
+static void
+set_orientation ()
+{
+  ClutterActor *stage;
+
+  stage = clutter_stage_get_default ();
+
+  clutter_actor_set_size (depth_tex, width, height);
+  clutter_actor_set_size (video_tex, width, height);
+  clutter_cairo_texture_set_surface_size (CLUTTER_CAIRO_TEXTURE (depth_tex), width, height);
+  clutter_cairo_texture_set_surface_size (CLUTTER_CAIRO_TEXTURE (video_tex), width, height);
+  clutter_actor_set_size (stage, width * 2, height + 250);
+  clutter_actor_set_position (video_tex, width, 0.0);
+  clutter_actor_set_position (info_text, 50, height + 20);
+  clutter_actor_set_position (instructions, 50, height + 70);
+}
 
 static void
 on_track_joints (GObject      *obj,
@@ -169,6 +192,7 @@ on_depth_frame (GFreenectDevice *kinect, gpointer user_data)
   gint dimension_factor;
   guchar *grayscale_buffer;
   guint16 *depth;
+  guint16 *transformed_depth;
   BufferInfo *buffer_info;
   gsize len;
   GError *error = NULL;
@@ -182,6 +206,26 @@ on_depth_frame (GFreenectDevice *kinect, gpointer user_data)
   height = frame_mode.height;
 
   g_object_get (skeleton, "dimension-reduction", &dimension_factor, NULL);
+
+  if (VERTICAL)
+    {
+      guint i, j;
+
+      transformed_depth = g_slice_alloc (width * height * sizeof (guint16));
+
+      for (j = 0; j < width; j++)
+        {
+          for (i = height - 1; i > 0; i--)
+            {
+              transformed_depth[((width -1 - j) * height + ((height - 1) - i))] = depth[i * width + j];
+            }
+        }
+
+      depth = transformed_depth;
+
+      width = frame_mode.height;
+      height = frame_mode.width;
+    }
 
   buffer_info = process_buffer (depth,
                                 width,
@@ -223,15 +267,41 @@ static void
 on_video_frame (GFreenectDevice *kinect, gpointer user_data)
 {
   guchar *buffer;
+  guchar *transformed_buffer;
+  guint width, height;
   GError *error = NULL;
   GFreenectFrameMode frame_mode;
 
   buffer = gfreenect_device_get_video_frame_rgb (kinect, NULL, &frame_mode);
 
+  width = frame_mode.width;
+  height = frame_mode.height;
+
+  if (VERTICAL)
+    {
+      guint i, j;
+
+      transformed_buffer = g_slice_alloc (sizeof (gchar) * width * height * 3);
+
+      for (j = 0; j < width; j++)
+        {
+          for (i = height - 1; i > 0; i--)
+            {
+              transformed_buffer[((width -1 - j) * height + ((height - 1) - i)) * 3] = buffer[(i * width + j) * 3];
+              transformed_buffer[((width -1 - j) * height + ((height - 1) - i)) * 3 + 1] = buffer[(i * width + j) * 3 + 1];
+              transformed_buffer[((width -1 - j) * height + ((height - 1) - i)) * 3 + 2] = buffer[(i * width + j) * 3 + 2];
+            }
+        }
+
+      buffer = transformed_buffer;
+      width = frame_mode.height;
+      height = frame_mode.width;
+    }
+
   if (! clutter_texture_set_from_rgb_data (CLUTTER_TEXTURE (video_tex),
                                            buffer,
                                            FALSE,
-                                           frame_mode.width, frame_mode.height,
+                                           width, height,
                                            0,
                                            frame_mode.bits_per_pixel / 8,
                                            CLUTTER_TEXTURE_NONE,
@@ -240,6 +310,8 @@ on_video_frame (GFreenectDevice *kinect, gpointer user_data)
       g_debug ("Error setting texture area: %s", error->message);
       g_error_free (error);
     }
+
+  g_slice_free1 (sizeof (gchar) * width * height * 3, transformed_buffer);
 }
 
 static void
@@ -421,6 +493,7 @@ on_key_release (ClutterActor *actor,
   GFreenectDevice *kinect;
   gdouble angle;
   guint key;
+  guint aux;
   g_return_val_if_fail (event != NULL, FALSE);
 
   kinect = GFREENECT_DEVICE (data);
@@ -453,6 +526,12 @@ on_key_release (ClutterActor *actor,
     case CLUTTER_KEY_Left:
       set_smoothing_factor (-.05);
       break;
+    case CLUTTER_KEY_o:
+      VERTICAL = !VERTICAL;
+      aux = width;
+      width = height;
+      height = aux;
+      set_orientation ();
     }
   set_info_text ();
   return TRUE;
@@ -472,6 +551,7 @@ create_instructions (void)
                          "\tIncrease threshold:  \t\t\t+/-\n"
                          "\tEnable/Disable smoothing:  \t\ts\n"
                          "\tSet smoothing level:  \t\t\tLeft/Right Arrows\n"
+                         "\tSwitch orientation:  \t\t\to"
                            );
   return text;
 }
@@ -490,10 +570,8 @@ on_new_kinect_device (GObject      *obj,
                       GAsyncResult *res,
                       gpointer      user_data)
 {
-  ClutterActor *stage, *instructions;
+  ClutterActor *stage;
   GError *error = NULL;
-  gint width = 640;
-  gint height = 480;
 
   kinect = gfreenect_device_new_finish (res, &error);
   if (kinect == NULL)
@@ -508,7 +586,6 @@ on_new_kinect_device (GObject      *obj,
 
   stage = clutter_stage_get_default ();
   clutter_stage_set_title (CLUTTER_STAGE (stage), "Kinect Test");
-  clutter_actor_set_size (stage, width * 2, height + 250);
   clutter_stage_set_user_resizable (CLUTTER_STAGE (stage), TRUE);
 
   g_signal_connect (stage, "destroy", G_CALLBACK (on_destroy), kinect);
@@ -521,15 +598,12 @@ on_new_kinect_device (GObject      *obj,
   clutter_container_add_actor (CLUTTER_CONTAINER (stage), depth_tex);
 
   video_tex = clutter_cairo_texture_new (width, height);
-  clutter_actor_set_position (video_tex, width, 0.0);
   clutter_container_add_actor (CLUTTER_CONTAINER (stage), video_tex);
 
   info_text = clutter_text_new ();
-  clutter_actor_set_position (info_text, 50, height + 20);
   clutter_container_add_actor (CLUTTER_CONTAINER (stage), info_text);
 
   instructions = create_instructions ();
-  clutter_actor_set_position (instructions, 50, height + 70);
   clutter_container_add_actor (CLUTTER_CONTAINER (stage), instructions);
 
   clutter_actor_show_all (stage);
@@ -538,6 +612,7 @@ on_new_kinect_device (GObject      *obj,
   g_object_get (skeleton, "smoothing-factor", &SMOOTHING_FACTOR, NULL);
 
   set_info_text ();
+  set_orientation ();
 
   g_signal_connect (kinect,
                     "depth-frame",
