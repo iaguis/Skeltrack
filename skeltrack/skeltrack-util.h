@@ -35,6 +35,7 @@ struct _Label {
   gint lower_screen_y;
   gint higher_z;
   gint lower_z;
+  guint num_nodes;
   gdouble normalized_num_nodes;
 };
 

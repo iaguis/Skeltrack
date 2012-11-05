@@ -410,6 +410,7 @@ new_label (gint index)
   label->lower_screen_y = -1;
   label->higher_z = -1;
   label->lower_z = -1;
+  label->num_nodes = 0;
   label->normalized_num_nodes = -1;
 
   return label;

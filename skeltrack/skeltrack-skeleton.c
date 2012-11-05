@@ -94,6 +94,7 @@ struct _SkeltrackSkeletonPrivate
   GMutex track_joints_mutex;
 
   GList *graph;
+  guint graph_nr_nodes;
   GList *labels;
   Node **node_matrix;
   gint  *distances_matrix;
@@ -451,6 +452,7 @@ skeltrack_skeleton_init (SkeltrackSkeleton *self)
   priv->buffer_height = 0;
 
   priv->graph = NULL;
+  priv->graph_nr_nodes = 0;
   priv->labels = NULL;
   priv->main_component = NULL;
   priv->node_matrix = NULL;
@@ -715,6 +717,7 @@ make_graph (SkeltrackSkeleton *self, GList **label_list)
 
   priv = self->priv;
 
+  priv->graph_nr_nodes = 0;
 
   if (priv->node_matrix == NULL)
     {
@@ -809,16 +812,18 @@ make_graph (SkeltrackSkeleton *self, GList **label_list)
 
           node->label = lowest_index_label;
           nodes = g_list_prepend(nodes, node);
+          priv->graph_nr_nodes++;
           priv->node_matrix[width * node->j + node->i] = node;
         }
     }
 
-  for (n = 0; n < g_list_length (nodes); n++)
+  for (n = 0; n < priv->graph_nr_nodes; n++)
     {
       Node *node = (Node *) g_list_nth_data (nodes, n);
       node->label = label_find (node->label);
       node->label->nodes = g_list_prepend (node->label->nodes,
                                           node);
+      node->label->num_nodes++;
 
       /* Assign lower node so we can extract the
          lower graph's component */
@@ -850,12 +855,10 @@ make_graph (SkeltrackSkeleton *self, GList **label_list)
        current_label = g_list_next (current_label))
     {
       Label *label;
-      GList *current_nodes;
 
       label = (Label *) current_label->data;
-      current_nodes = label->nodes;
 
-      label->normalized_num_nodes =  g_list_length (current_nodes) *
+      label->normalized_num_nodes =  label->num_nodes *
                                      ((label->higher_z - label->lower_z)/2 +
                                      label->lower_z) *
                                      (pow (DIMENSION_REDUCTION, 2)/2) /
@@ -874,7 +877,7 @@ make_graph (SkeltrackSkeleton *self, GList **label_list)
 
       /* Remove label if number of nodes is less than
          the minimum required */
-      if (g_list_length (label->nodes) < priv->min_nr_nodes)
+      if ( label->num_nodes < priv->min_nr_nodes)
         {
           nodes = remove_nodes_with_label (nodes,
                                            priv->node_matrix,
@@ -946,7 +949,7 @@ get_centroid (SkeltrackSkeleton *self)
   gint avg_x = 0;
   gint avg_y = 0;
   gint avg_z = 0;
-  gint length;
+  gint length = 0;
   GList *node_list;
   Node *cent = NULL;
   Node *centroid = NULL;
@@ -963,9 +966,9 @@ get_centroid (SkeltrackSkeleton *self)
       avg_x += node->x;
       avg_y += node->y;
       avg_z += node->z;
+      length++;
     }
 
-  length = g_list_length (self->priv->main_component);
   cent = g_slice_new0 (Node);
   cent->x = avg_x / length;
   cent->y = avg_y / length;
