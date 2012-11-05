@@ -699,11 +699,12 @@ GList *
 make_graph (SkeltrackSkeleton *self, GList **label_list)
 {
   SkeltrackSkeletonPrivate *priv;
-  gint i, j, n;
+  gint i, j;
   Node *node;
   GList *nodes = NULL;
   GList *labels = NULL;
   GList *current_label;
+  GList *current_node;
   Label *main_component_label = NULL;
   gint index = 0;
   gint next_label = -1;
@@ -817,9 +818,11 @@ make_graph (SkeltrackSkeleton *self, GList **label_list)
         }
     }
 
-  for (n = 0; n < priv->graph_nr_nodes; n++)
+  for (current_node = g_list_first (nodes);
+       current_node != NULL;
+       current_node = g_list_next (current_node))
     {
-      Node *node = (Node *) g_list_nth_data (nodes, n);
+      Node *node = (Node *) current_node->data;
       node->label = label_find (node->label);
       node->label->nodes = g_list_prepend (node->label->nodes,
                                           node);
