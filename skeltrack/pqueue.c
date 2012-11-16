@@ -19,7 +19,8 @@ pqueue_new (guint max_size, guint width, guint height)
   return queue;
 }
 
-void swap (PQueue *queue, guint a, guint b)
+static void
+swap (PQueue *queue, guint a, guint b)
 {
   guint index_a, index_b;
 
@@ -37,12 +38,14 @@ void swap (PQueue *queue, guint a, guint b)
   queue->elements[a] = element_temp;
 }
 
-gboolean greater (PQueue *queue, guint a, guint b)
+static gboolean
+greater (PQueue *queue, guint a, guint b)
 {
   return queue->elements[a].priority > queue->elements[b].priority;
 }
 
-static void swim (PQueue *queue, guint index)
+static void
+swim (PQueue *queue, guint index)
 {
   while (index > 1 && greater (queue, index/2, index))
     {
@@ -51,7 +54,8 @@ static void swim (PQueue *queue, guint index)
     }
 }
 
-void sink (PQueue *queue, guint index)
+static void
+sink (PQueue *queue, guint index)
 {
   guint j, size;
   size = queue->size;
