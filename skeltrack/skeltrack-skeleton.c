@@ -60,9 +60,18 @@
 #include <math.h>
 #include <stdlib.h>
 
+#include <stdio.h>
+
+#ifdef __APPLE__
+  #include <OpenCL/cl.h>
+#else
+  #include <CL/cl.h>
+#endif
+
 #include "skeltrack-skeleton.h"
 #include "skeltrack-smooth.h"
 #include "skeltrack-util.h"
+#include "skeltrack-opencl.h"
 
 #define SKELTRACK_SKELETON_GET_PRIVATE(obj) (G_TYPE_INSTANCE_GET_PRIVATE ((obj), \
                                              SKELTRACK_TYPE_SKELETON, \
@@ -77,7 +86,7 @@
 #define SHOULDERS_ARC_LENGTH 250
 #define SHOULDERS_SEARCH_STEP 0.05
 #define JOINTS_PERSISTENCY_DEFAULT 3
-#define SMOOTHING_FACTOR_DEFAULT .5
+#define SMOOTHING_FACTOR_DEFAULT .25
 #define ENABLE_SMOOTHING_DEFAULT TRUE
 #define DEFAULT_FOCUS_POINT_Z 1000
 #define TORSO_MINIMUM_NUMBER_NODES_DEFAULT 16.0
@@ -98,7 +107,9 @@ struct _SkeltrackSkeletonPrivate
   GList *labels;
   Node **node_matrix;
   gint  *distances_matrix;
-  GList *main_component;
+
+  /* struct for OpenCL */
+  oclData *ocl_data;
 
   guint16 dimension_reduction;
   guint16 distance_threshold;
@@ -454,7 +465,6 @@ skeltrack_skeleton_init (SkeltrackSkeleton *self)
   priv->graph = NULL;
   priv->graph_nr_nodes = 0;
   priv->labels = NULL;
-  priv->main_component = NULL;
   priv->node_matrix = NULL;
   priv->distances_matrix = NULL;
 
@@ -492,6 +502,26 @@ skeltrack_skeleton_init (SkeltrackSkeleton *self)
   priv->torso_minimum_number_nodes = TORSO_MINIMUM_NUMBER_NODES_DEFAULT;
 
   priv->previous_head = NULL;
+}
+
+static void
+init_opencl_structures (SkeltrackSkeleton *self)
+{
+  guint size;
+  SkeltrackSkeletonPrivate *priv;
+
+  priv = self->priv;
+  size = priv->buffer_width * priv->buffer_height;
+
+  priv->ocl_data = g_slice_alloc0 (sizeof (oclData));
+
+  priv->ocl_data->edge_matrix = g_slice_alloc (size * NEIGHBOR_SIZE * sizeof (gint));
+
+  priv->ocl_data->weight_matrix = g_slice_alloc (size * NEIGHBOR_SIZE * sizeof (gint));
+
+  priv->ocl_data->mD = g_slice_alloc0 (sizeof (gint));
+
+  ocl_init (priv->ocl_data, size);
 }
 
 static void
@@ -662,63 +692,18 @@ skeltrack_skeleton_get_property (GObject    *obj,
     }
 }
 
-static gint
-join_neighbor (SkeltrackSkeleton *self,
-               Node *node,
-               Label **neighbor_labels,
-               gint index,
-               gint i,
-               gint j)
-{
-  Node *neighbor;
-  if (i < 0 || i >= self->priv->buffer_width ||
-      j < 0 || j >= self->priv->buffer_height)
-    {
-      return index;
-    }
-
-  neighbor = self->priv->node_matrix[self->priv->buffer_width * j + i];
-  if (neighbor != NULL)
-    {
-      gint distance;
-      distance = get_distance (neighbor, node);
-      if (distance < self->priv->distance_threshold)
-        {
-          neighbor->neighbors = g_list_prepend (neighbor->neighbors,
-                                               node);
-          node->neighbors = g_list_prepend (node->neighbors,
-                                           neighbor);
-          neighbor_labels[index] = neighbor->label;
-          index++;
-        }
-    }
-  return index;
-}
-
 GList *
-make_graph (SkeltrackSkeleton *self, GList **label_list)
+make_graph (SkeltrackSkeleton *self)
 {
   SkeltrackSkeletonPrivate *priv;
-  gint i, j;
-  Node *node;
+  gint i, j, k;
+  guint width, height, biggest, *histogram;
+  oclData *data;
   GList *nodes = NULL;
-  GList *labels = NULL;
-  GList *current_label;
-  GList *current_node;
-  Label *main_component_label = NULL;
-  gint index = 0;
-  gint next_label = -1;
-  guint16 value;
-  guint16 *buffer;
-  gint width, height;
-
-  buffer = self->priv->buffer;
-  width = self->priv->buffer_width;
-  height = self->priv->buffer_height;
 
   priv = self->priv;
-
-  priv->graph_nr_nodes = 0;
+  width = priv->buffer_width;
+  height = priv->buffer_height;
 
   if (priv->node_matrix == NULL)
     {
@@ -731,217 +716,140 @@ make_graph (SkeltrackSkeleton *self, GList **label_list)
               width * height * sizeof (Node *));
     }
 
+  data = priv->ocl_data;
+
+  ocl_ccl (data, priv->buffer, width, height, 1);
+
+  histogram = g_slice_alloc0 (sizeof (guint) * width * height);
+
+  biggest = 0;
+  for (i = 0; i < width; i++) {
+    for (j = 0; j < height; j++) {
+      if (data->labels_matrix[j*width + i] == 0)
+        continue;
+      histogram[data->labels_matrix[j*width + i]]++;
+      if (histogram[data->labels_matrix[j*width + i]] > biggest)
+        biggest = data->labels_matrix[j*width + i];
+    }
+  }
+
+  g_slice_free1 (sizeof (guint) * width * height, histogram);
+
+  ocl_make_graph (data, width, height, biggest, DIMENSION_REDUCTION);
+
+  gboolean label_done = FALSE;
+  gint current_label = -1;
+  int *close_node = NULL;
+  int node, dist;
+
   for (i = 0; i < width; i++)
     {
       for (j = 0; j < height; j++)
         {
-          gint south, north, west;
-          Label *lowest_index_label = NULL;
-          Label *neighbor_labels[4] = {NULL, NULL, NULL, NULL};
+          gint index = j * width + i;
 
-          value = buffer[j * width + i];
-          if (value == 0)
+          if (label_done && data->labels_matrix[index] == current_label)
             continue;
 
-          node = g_slice_new0 (Node);
-          node->i = i;
-          node->j = j;
-          node->z = value;
-          convert_screen_coords_to_mm (self->priv->buffer_width,
-                                       self->priv->buffer_height,
-                                       self->priv->dimension_reduction,
-                                       i, j,
-                                       node->z,
-                                       &(node->x),
-                                       &(node->y));
-          node->neighbors = NULL;
-          node->linked_nodes = NULL;
+          label_done = FALSE;
 
-          index = 0;
-
-          south = j + 1;
-          north = j - 1;
-          west = i - 1;
-
-          /* West */
-          index = join_neighbor (self,
-                                 node,
-                                 neighbor_labels,
-                                 index,
-                                 west, j);
-          /* South West*/
-          index = join_neighbor (self,
-                                 node,
-                                 neighbor_labels,
-                                 index,
-                                 west, south);
-          /* North */
-          index = join_neighbor (self,
-                                 node,
-                                 neighbor_labels,
-                                 index,
-                                 i, north);
-
-          /* North West */
-          index = join_neighbor (self,
-                                 node,
-                                 neighbor_labels,
-                                 index,
-                                 west, north);
-
-          lowest_index_label = get_lowest_index_label (neighbor_labels);
-
-          /* No neighbors */
-          if (lowest_index_label == NULL)
+          current_label = data->labels_matrix[index];
+          if (current_label != 0 && current_label != biggest)
             {
-              Label *label;
-              next_label++;
-              label = new_label (next_label);
-              labels = g_list_prepend (labels, label);
-              lowest_index_label = label;
+              close_node = ocl_join_to_biggest(data, i, j, biggest,
+                  priv->distance_threshold, priv->distance_threshold,
+                  priv->hands_minimum_distance, width, height,
+                  DIMENSION_REDUCTION);
+
+              node = close_node[0];
+              dist = close_node[1];
+
+              g_slice_free1 (sizeof (int) * 2, close_node);
+
+              if (node == -1)
+                continue;
+
+              for (k = 0; k < NEIGHBOR_SIZE; k++) {
+                gint index2 = index * NEIGHBOR_SIZE + k;
+                if (data->edge_matrix[index2] == -1)
+                  {
+                    data->edge_matrix[index2] = node;
+                    data->weight_matrix[index2] = dist;
+                    break;
+                  }
+              }
+
+              for (k = 0; k < NEIGHBOR_SIZE; k++) {
+                gint index2 = node * NEIGHBOR_SIZE + k;
+                if (data->edge_matrix[index2] == -1)
+                  {
+                    data->edge_matrix[index2] = index;
+                    data->weight_matrix[index2] = dist;
+                    break;
+                  }
+              }
+
+              label_done = TRUE;
             }
-          else
+        }
+    }
+
+  g_slice_free1 (sizeof (guint) * width * height, data->labels_matrix);
+
+  /* nodes to node matrix */
+  for (i = 0; i < width; i++)
+    {
+      for (j = 0; j < height; j++)
+        {
+          if (data->edge_matrix[(j * width + i) * NEIGHBOR_SIZE] != -1)
             {
-              for (index = 0; index < 4; index++)
+              Node *node = g_slice_new0 (Node);
+              node->i = i;
+              node->j = j;
+              node->z = priv->buffer[j * width + i];
+
+              convert_screen_coords_to_mm (width,
+                                           height,
+                                           priv->dimension_reduction,
+                                           i, j,
+                                           node->z,
+                                           &(node->x),
+                                           &(node->y));
+
+              nodes = g_list_append (nodes, node);
+              priv->node_matrix[j * width + i] = node;
+            }
+        }
+    }
+
+  /* fill neighbors */
+  for (i = 0; i < width; i++)
+    {
+      for (j=0; j < height; j++)
+        {
+          Node * node;
+          if ((node = priv->node_matrix[j * width + i]) != NULL)
+            {
+              for (k=0; k < NEIGHBOR_SIZE && data->edge_matrix[(j * width + i)
+                  * NEIGHBOR_SIZE + k] != -1; k++)
                 {
-                  if (neighbor_labels[index] != NULL)
+                  Node * neighbor;
+
+                  neighbor = priv->node_matrix[data->edge_matrix[(j * width +
+                      i) * NEIGHBOR_SIZE + k]];
+
+                  if (neighbor != NULL)
                     {
-                      label_union (neighbor_labels[index], lowest_index_label);
+                      neighbor->neighbors = g_list_append (neighbor->neighbors,
+                                                           node);
+                      node->neighbors = g_list_append (node->neighbors,
+                                                       neighbor);
                     }
                 }
+
             }
-
-          node->label = lowest_index_label;
-          nodes = g_list_prepend(nodes, node);
-          priv->graph_nr_nodes++;
-          priv->node_matrix[width * node->j + node->i] = node;
         }
     }
-
-  for (current_node = g_list_first (nodes);
-       current_node != NULL;
-       current_node = g_list_next (current_node))
-    {
-      Node *node = (Node *) current_node->data;
-      node->label = label_find (node->label);
-      node->label->nodes = g_list_prepend (node->label->nodes,
-                                          node);
-      node->label->num_nodes++;
-
-      /* Assign lower node so we can extract the
-         lower graph's component */
-      if (node->label->lower_screen_y == -1 ||
-         node->j > node->label->lower_screen_y)
-      {
-        node->label->lower_screen_y = node->j;
-      }
-
-      /* Assign farther to the camera node so we
-         can extract the main graph component */
-      if (node->label->higher_z == -1 ||
-         node->z > node->label->higher_z)
-        {
-          node->label->higher_z = node->z;
-        }
-
-      /* Assign closer to the camera node so we
-         can extract the main graph component */
-      if (node->label->lower_z == -1 ||
-         node->z < node->label->lower_z)
-        {
-          node->label->lower_z = node->z;
-        }
-    }
-
-  for (current_label = g_list_first (labels);
-       current_label != NULL;
-       current_label = g_list_next (current_label))
-    {
-      Label *label;
-
-      label = (Label *) current_label->data;
-
-      label->normalized_num_nodes =  label->num_nodes *
-                                     ((label->higher_z - label->lower_z)/2 +
-                                     label->lower_z) *
-                                     (pow (DIMENSION_REDUCTION, 2)/2) /
-                                     1000000;
-    }
-
-  main_component_label = get_main_component (nodes,
-                                             priv->focus_node,
-                                             priv->torso_minimum_number_nodes);
-
-  current_label = g_list_first (labels);
-  while (current_label != NULL)
-    {
-      Label *label;
-      label = (Label *) current_label->data;
-
-      /* Remove label if number of nodes is less than
-         the minimum required */
-      if ( label->num_nodes < priv->min_nr_nodes)
-        {
-          nodes = remove_nodes_with_label (nodes,
-                                           priv->node_matrix,
-                                           priv->buffer_width,
-                                           label);
-
-          GList *link = current_label;
-          current_label = g_list_next (current_label);
-          labels = g_list_delete_link (labels, link);
-          free_label (label);
-          continue;
-        }
-
-      current_label = g_list_next (current_label);
-    }
-
-  if (main_component_label)
-    {
-      join_components_to_main (labels,
-                               main_component_label,
-                               priv->distance_threshold,
-                               priv->hands_minimum_distance,
-                               priv->distance_threshold);
-
-      current_label = g_list_first (labels);
-      while (current_label != NULL)
-        {
-          Label *label;
-          label = (Label *) current_label->data;
-          if (label == main_component_label)
-            {
-              current_label = g_list_next (current_label);
-              continue;
-            }
-
-          if (label->bridge_node == NULL)
-            {
-              nodes = remove_nodes_with_label (nodes,
-                                               priv->node_matrix,
-                                               priv->buffer_width,
-                                               label);
-
-              GList *link = current_label;
-              current_label = g_list_next (current_label);
-              labels = g_list_delete_link (labels, link);
-              free_label (label);
-              continue;
-            }
-
-          label->bridge_node->neighbors =
-            g_list_prepend (label->bridge_node->neighbors, label->to_node);
-          label->to_node->neighbors = g_list_prepend (label->to_node->neighbors,
-                                                     label->bridge_node);
-
-          current_label = g_list_next (current_label);
-        }
-
-      priv->main_component = main_component_label->nodes;
-    }
-
-  *label_list = labels;
 
   return nodes;
 }
@@ -957,10 +865,8 @@ get_centroid (SkeltrackSkeleton *self)
   Node *cent = NULL;
   Node *centroid = NULL;
 
-  if (self->priv->main_component == NULL)
-    return NULL;
 
-  for (node_list = g_list_first (self->priv->main_component);
+  for (node_list = g_list_first (self->priv->graph);
        node_list != NULL;
        node_list = g_list_next (node_list))
     {
@@ -991,10 +897,10 @@ get_lowest (SkeltrackSkeleton *self, Node *centroid)
   Node *lowest = NULL;
   /* @TODO: Use the node_matrix instead of the lowest
      component to look for the lowest node as it's faster. */
-  if (self->priv->main_component != NULL)
+  if (self->priv->graph != NULL)
     {
       GList *node_list;
-      for (node_list = g_list_first (self->priv->main_component);
+      for (node_list = g_list_first (self->priv->graph);
            node_list != NULL;
            node_list = g_list_next (node_list))
         {
@@ -1104,7 +1010,7 @@ static GList *
 get_extremas (SkeltrackSkeleton *self, Node *centroid)
 {
   SkeltrackSkeletonPrivate *priv;
-  gint i, nr_nodes, matrix_size;
+  gint nr_nodes, matrix_size, i;
   Node *lowest, *source, *node;
   GList *extremas = NULL;
 
@@ -1118,22 +1024,23 @@ get_extremas (SkeltrackSkeleton *self, Node *centroid)
       priv->distances_matrix = g_slice_alloc0 (matrix_size * sizeof (gint));
     }
 
-  for (i = 0; i < matrix_size; i++)
+  for (i=0; i<matrix_size; i++)
     {
       priv->distances_matrix[i] = -1;
     }
+
 
   for (nr_nodes = NR_EXTREMAS_TO_SEARCH;
        source != NULL && nr_nodes > 0;
        nr_nodes--)
     {
       dijkstra_to (priv->graph,
-                   source,
-                   NULL,
-                   priv->buffer_width,
-                   priv->buffer_height,
-                   priv->distances_matrix,
-                   NULL);
+		   source,
+		   NULL,
+		   priv->buffer_width,
+		   priv->buffer_height,
+		   priv->distances_matrix,
+		   NULL);
 
       node = get_longer_distance (self, priv->distances_matrix);
 
@@ -1407,38 +1314,41 @@ set_left_and_right_from_extremas (SkeltrackSkeleton *self,
 
   dist_left_a = create_new_dist_matrix(matrix_size);
   dijkstra_to (self->priv->graph,
-               left_shoulder,
-               ext_a,
-               width,
-               height,
-               dist_left_a,
-               previous_left_a);
+	       left_shoulder,
+	       ext_a,
+	       width,
+	       height,
+	       dist_left_a,
+	       previous_left_a);
 
   dist_left_b = create_new_dist_matrix(matrix_size);
   dijkstra_to (self->priv->graph,
-               left_shoulder,
-               ext_b,
-               width,
-               height,
-               dist_left_b,
-               previous_left_b);
+	       left_shoulder,
+	       ext_b,
+	       width,
+	       height,
+	       dist_left_b,
+	       previous_left_b);
 
   dist_right_a = create_new_dist_matrix(matrix_size);
   dijkstra_to (self->priv->graph,
-               right_shoulder,
-               ext_a,
-               width,
-               height,
-               dist_right_a, previous_right_a);
+	       right_shoulder,
+	       ext_a,
+	       width,
+	       height,
+	       dist_right_a,
+	       previous_right_a);
+
 
   dist_right_b = create_new_dist_matrix(matrix_size);
   dijkstra_to (self->priv->graph,
-               right_shoulder,
-               ext_b,
-               width,
-               height,
-               dist_right_b,
-               previous_right_b);
+	       right_shoulder,
+	       ext_b,
+	       width,
+	       height,
+	       dist_right_b,
+	       previous_right_b);
+
 
   total_dist_left_a = dist_left_a[ext_a->j * width + ext_a->i];
   total_dist_right_a = dist_right_a[ext_a->j * width + ext_a->i];
@@ -1590,6 +1500,7 @@ get_adjusted_shoulder (guint buffer_width,
 static SkeltrackJoint **
 track_joints (SkeltrackSkeleton *self)
 {
+  GTimer *timer = g_timer_new();
   Node * centroid;
   Node *head = NULL;
   Node *right_shoulder = NULL;
@@ -1598,7 +1509,14 @@ track_joints (SkeltrackSkeleton *self)
   SkeltrackJointList joints = NULL;
   SkeltrackJointList smoothed = NULL;
 
-  self->priv->graph = make_graph (self, &self->priv->labels);
+  GTimer *timer2 = g_timer_new();
+  if (self->priv->ocl_data == NULL)
+    {
+      init_opencl_structures (self);
+    }
+  g_timer_stop (timer2);
+
+  self->priv->graph = make_graph (self);
   centroid = get_centroid (self);
   extremas = get_extremas (self, centroid);
 
@@ -1692,13 +1610,11 @@ track_joints (SkeltrackSkeleton *self)
 
   self->priv->buffer = NULL;
 
-  self->priv->main_component = NULL;
 
   clean_nodes (self->priv->graph);
   g_list_free (self->priv->graph);
   self->priv->graph = NULL;
 
-  clean_labels (self->priv->labels);
   g_list_free (self->priv->labels);
   self->priv->labels = NULL;
 
@@ -1756,6 +1672,9 @@ track_joints (SkeltrackSkeleton *self)
 
   g_list_free (extremas);
 
+  g_timer_stop (timer);
+  printf ("\n%f\n", g_timer_elapsed (timer, NULL) - g_timer_elapsed (timer2,
+        NULL));
   return joints;
 }
 
@@ -1771,6 +1690,52 @@ clean_tracking_resources (SkeltrackSkeleton *self)
                  self->priv->buffer_height * sizeof (Node *),
                  self->priv->node_matrix);
   self->priv->node_matrix = NULL;
+
+  if (self->priv->ocl_data != NULL)
+    {
+      g_slice_free1 (self->priv->buffer_width * NEIGHBOR_SIZE *
+                     self->priv->buffer_height * sizeof (gint),
+                     self->priv->ocl_data->edge_matrix);
+      self->priv->ocl_data->edge_matrix = NULL;
+
+      g_slice_free1 (self->priv->buffer_width * NEIGHBOR_SIZE *
+                    self->priv->buffer_height * sizeof (gint),
+                    self->priv->ocl_data->weight_matrix);
+      self->priv->ocl_data->weight_matrix = NULL;
+
+      g_slice_free1 (self->priv->buffer_width *
+                    self->priv->buffer_height * sizeof (guint),
+                    self->priv->ocl_data->mask_matrix);
+      self->priv->ocl_data->mask_matrix = NULL;
+
+      g_slice_free1 (self->priv->buffer_width *
+                    self->priv->buffer_height * sizeof (gint),
+                    self->priv->ocl_data->previous_matrix);
+      self->priv->ocl_data->previous_matrix = NULL;
+
+      g_slice_free1 (sizeof (gint),
+                    self->priv->ocl_data->mD);
+      self->priv->ocl_data->mD = NULL;
+
+      clReleaseContext (self->priv->ocl_data->context);
+      clReleaseCommandQueue (self->priv->ocl_data->command_queue);
+      clReleaseProgram (self->priv->ocl_data->program);
+
+      clReleaseMemObject (self->priv->ocl_data->edge_matrix_device);
+      clReleaseMemObject (self->priv->ocl_data->weight_matrix_device);
+      clReleaseMemObject (self->priv->ocl_data->buffer_matrix_device);
+      clReleaseMemObject (self->priv->ocl_data->labels_matrix_device);
+      clReleaseMemObject (self->priv->ocl_data->mD_device);
+      clReleaseMemObject (self->priv->ocl_data->close_node_device);
+
+      clReleaseKernel (self->priv->ocl_data->initialize_graph_kernel);
+      clReleaseKernel (self->priv->ocl_data->mesh_kernel);
+      clReleaseKernel (self->priv->ocl_data->make_graph_kernel);
+      clReleaseKernel (self->priv->ocl_data->join_to_biggest_kernel);
+
+      g_slice_free1 (sizeof (oclData), self->priv->ocl_data);
+      self->priv->ocl_data = NULL;
+    }
 }
 
 static void

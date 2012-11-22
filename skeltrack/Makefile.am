@@ -28,13 +28,15 @@ source_c = \
 	skeltrack-skeleton.c \
 	skeltrack-smooth.c \
 	skeltrack-util.c \
-	pqueue.c
+	pqueue.c \
+	skeltrack-opencl.c
 
 source_h = \
 	skeltrack.h \
 	skeltrack-joint.h \
 	skeltrack-skeleton.h \
-	pqueue.h
+	pqueue.h \
+	skeltrack-opencl.h
 
 source_h_priv =
 

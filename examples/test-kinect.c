@@ -32,6 +32,9 @@ typedef struct
   gint reduced_height;
 } BufferInfo;
 
+GTimer *timer;
+GList *measures = NULL;
+
 static void
 on_track_joints (GObject      *obj,
                  GAsyncResult *res,
@@ -596,6 +599,19 @@ main (int argc, char *argv[])
     {
       g_object_unref (skeleton);
     }
+  GList *node_list;
+  gdouble sum = 0;
+  gint count = 0;
+  for (node_list = g_list_first (measures);
+       node_list != NULL;
+       node_list = g_list_next (node_list))
+    {
+      gdouble *value = (gdouble *) node_list->data;
+      sum += *value;
+      count++;
+    }
+
+  printf ("Average execution time: %f\n", sum/count);
 
   return 0;
 }

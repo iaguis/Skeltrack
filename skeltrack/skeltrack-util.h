@@ -20,11 +20,13 @@
  * for more details.
  */
 
-#ifndef __SKELTRACK_UTIL_H__
-#define __SKELTRACK_UTIL_H__
+#ifndef __SKELTRACK_UTIL_H
+#define __SKELTRACK_UTIL_H
 
 #include <glib.h>
 #include "skeltrack-joint.h"
+
+#define NEIGHBOR_SIZE 8
 
 typedef struct _Label Label;
 typedef struct _Node Node;
@@ -129,4 +131,7 @@ void          convert_mm_to_screen_coords      (guint  width,
                                                 gint   z,
                                                 guint *i,
                                                 guint *j);
-#endif /* __SKELTRACK_UTIL_H__ */
+
+gboolean mask_array_empty (guint *mask_array, guint size);
+
+#endif /** __SKELTRACK_UTIL_H__ **/

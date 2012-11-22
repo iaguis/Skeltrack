@@ -86,7 +86,7 @@ unlink_node (Node *node)
   node->linked_nodes = NULL;
 }
 
-static Node *
+Node *
 get_closest_node_with_distances (GList *node_list,
                                  Node *from,
                                  guint x_dist,
@@ -232,94 +232,6 @@ get_closest_node (GList *node_list, Node *from)
   return closest;
 }
 
-Label *
-get_main_component (GList *node_list, Node *from, gdouble min_normalized_nr_nodes)
-{
-  Label *main_component = NULL;
-  gint distance = -1;
-  GList *current_node;
-
-  for (current_node = g_list_first (node_list);
-       current_node != NULL;
-       current_node = g_list_next (current_node))
-  {
-    Node *node;
-    Label *label;
-    gint current_distance;
-    node = (Node *) current_node->data;
-    label = node->label;
-
-    if (main_component == NULL &&
-        label->normalized_num_nodes > min_normalized_nr_nodes)
-      {
-        main_component = label;
-        distance = get_distance (node, from);
-        continue;
-      }
-
-    current_distance = get_distance (node, from);
-    if (current_distance < distance &&
-        label->normalized_num_nodes > min_normalized_nr_nodes)
-      {
-        main_component = label;
-        distance = current_distance;
-      }
-  }
-
-  return main_component;
-}
-
-Label *
-label_find (Label *label)
-{
-  Label *parent;
-
-  g_return_val_if_fail (label != NULL, NULL);
-
-  parent = label->parent;
-  if (parent == label)
-    return parent;
-  else
-    return label_find (parent);
-}
-
-void
-label_union (Label *a, Label *b)
-{
-  Label *root_a, *root_b;
-  root_a = label_find (a);
-  root_b = label_find (b);
-  if (root_a->index < root_b->index)
-    {
-      b->parent = root_a;
-    }
-  else
-    {
-      a->parent = root_b;
-    }
-}
-
-void
-free_label (Label *label)
-{
-  g_list_free (label->nodes);
-  label->nodes = NULL;
-  g_slice_free (Label, label);
-}
-
-void
-clean_labels (GList *labels)
-{
-  GList *current = g_list_first (labels);
-  while (current != NULL)
-    {
-      Label *label;
-      label = (Label *) current->data;
-      free_label (label);
-      current = g_list_next (current);
-    }
-}
-
 void
 free_node (Node *node, gboolean unlink_node_first)
 {
@@ -350,131 +262,6 @@ clean_nodes (GList *nodes)
     }
 }
 
-GList *
-remove_nodes_with_label (GList *nodes,
-                         Node **node_matrix,
-                         gint width,
-                         Label *label)
-{
-  Node *node;
-  GList *link_to_delete, *current_node;
-
-  current_node = g_list_first (nodes);
-  while (current_node != NULL)
-    {
-      node = (Node *) current_node->data;
-      if (node->label == label)
-        {
-          link_to_delete = current_node;
-          current_node = g_list_next (current_node);
-          nodes = g_list_delete_link (nodes, link_to_delete);
-          node_matrix[width * node->j + node->i] = NULL;
-          free_node (node, TRUE);
-          continue;
-        }
-      current_node = g_list_next (current_node);
-    }
-  return nodes;
-}
-
-Label *
-get_lowest_index_label (Label **neighbor_labels)
-{
-  guint index;
-  Label *lowest_index_label = NULL;
-
-  lowest_index_label = neighbor_labels[0];
-  for (index = 1; index < 4; index++)
-    {
-      if (neighbor_labels[index] == NULL)
-        continue;
-
-      if (lowest_index_label == NULL ||
-          lowest_index_label->index < neighbor_labels[index]->index)
-        {
-          lowest_index_label = neighbor_labels[index];
-        }
-    }
-
-  return lowest_index_label;
-}
-
-Label *
-new_label (gint index)
-{
-  Label *label = g_slice_new (Label);
-  label->index = index;
-  label->parent = label;
-  label->nodes = NULL;
-  label->bridge_node = NULL;
-  label->to_node = NULL;
-  label->lower_screen_y = -1;
-  label->higher_z = -1;
-  label->lower_z = -1;
-  label->num_nodes = 0;
-  label->normalized_num_nodes = -1;
-
-  return label;
-}
-
-void
-join_components_to_main (GList *labels,
-                         Label *main_component_label,
-                         guint horizontal_max_distance,
-                         guint depth_max_distance,
-                         guint graph_distance_threshold)
-{
-  GList *current_label;
-
-  for (current_label = g_list_first (labels);
-       current_label != NULL;
-       current_label = g_list_next (current_label))
-    {
-      gint closer_distance = -1;
-      Label *label;
-      GList *current_node, *nodes;
-
-      label = (Label *) current_label->data;
-      if (label == main_component_label)
-        continue;
-
-      /* Skip nodes behind main component */
-      if (label->higher_z > main_component_label->higher_z +
-          graph_distance_threshold)
-          continue;
-
-      nodes = label->nodes;
-      for (current_node = g_list_first (nodes);
-           current_node != NULL;
-           current_node = g_list_next (current_node))
-        {
-          Node *node;
-          gint current_distance;
-          node = (Node *) current_node->data;
-          /* Skip nodes that belong to the same component or
-             that a not in the edge of their component */
-          if (g_list_length (node->neighbors) == 8)
-            continue;
-
-          Node *closest_node =
-            get_closest_node_with_distances (main_component_label->nodes,
-                                             node,
-                                             horizontal_max_distance,
-                                             horizontal_max_distance,
-                                             depth_max_distance,
-                                             &current_distance);
-          if (closest_node &&
-              (current_distance < closer_distance ||
-               closer_distance == -1))
-            {
-              node->label->bridge_node = node;
-              node->label->to_node = closest_node;
-              closer_distance = current_distance;
-            }
-        }
-    }
-}
-
 void
 set_joint_from_node (SkeltrackJointList *joints,
                      Node *node,
@@ -497,6 +284,20 @@ create_new_dist_matrix (gint matrix_size)
     }
 
   return distances;
+}
+
+gboolean
+mask_array_empty (guint *mask_array, guint size)
+{
+  guint i;
+
+  for (i=0; i < size; i++)
+    {
+      if (mask_array[i] == 1)
+        return FALSE;
+    }
+
+  return TRUE;
 }
 
 gboolean
@@ -626,3 +427,4 @@ convert_mm_to_screen_coords (guint  width,
   *j = round (height / 2.0 + y / ((gfloat) (z + MIN_DISTANCE) * SCALE_FACTOR *
                                   dimension_reduction));
 }
+

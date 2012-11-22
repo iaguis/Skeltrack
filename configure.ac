@@ -95,6 +95,11 @@ PKG_CHECK_MODULES(EXAMPLES_DEPS, gfreenect-0.1 >= GFREENECT_REQUIRED
                                  enable_examples=yes,
                                  enable_examples=no)
 
+AC_CHECK_LIB(OpenCL, clFinish, [LIBS="-lOpenCL ${LIBS}"
+                                CL_LIBS="${CL_LDFLAGS} -lOpenCL"
+                                AC_SUBST(CL_LIBS)],
+                                AC_MSG_FAILURE([could not link with opencl]))
+
 AM_CONDITIONAL(ENABLE_EXAMPLES, test x"${enable_examples}" = x"yes")
 
 # GObject-Introspection check
