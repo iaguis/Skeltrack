@@ -386,8 +386,8 @@ on_skeleton_draw (ClutterCanvas *canvas,
 {
   ClutterColor *color;
   SkeltrackJoint *head, *left_hand, *right_hand,
-    *left_shoulder, *right_shoulder, *left_elbow, *right_elbow;
-
+    *left_shoulder, *right_shoulder, *left_elbow, *right_elbow,
+    *shoulder_center, *centroid;
   if (list == NULL)
     return FALSE;
 
@@ -401,10 +401,14 @@ on_skeleton_draw (ClutterCanvas *canvas,
                                        SKELTRACK_JOINT_ID_LEFT_SHOULDER);
   right_shoulder = skeltrack_joint_list_get_joint (list,
                                        SKELTRACK_JOINT_ID_RIGHT_SHOULDER);
+  shoulder_center = skeltrack_joint_list_get_joint (list,
+                                       SKELTRACK_JOINT_ID_SHOULDER_CENTER);
   left_elbow = skeltrack_joint_list_get_joint (list,
                                                SKELTRACK_JOINT_ID_LEFT_ELBOW);
   right_elbow = skeltrack_joint_list_get_joint (list,
                                                 SKELTRACK_JOINT_ID_RIGHT_ELBOW);
+  centroid = skeltrack_joint_list_get_joint (list,
+                                             SKELTRACK_JOINT_ID_CENTER);
 
   /* Paint it white */
   color = clutter_color_new (255, 255, 255, 255);
@@ -414,10 +418,15 @@ on_skeleton_draw (ClutterCanvas *canvas,
   clutter_color_free (color);
 
   paint_joint (cairo, head, 50000, "#FFF800");
+  connect_joints (cairo, head, shoulder_center, "#afafaf");
 
-  connect_joints (cairo, left_shoulder, right_shoulder, "#afafaf");
+  connect_joints (cairo, shoulder_center, centroid, "#afafaf");
+
+  connect_joints (cairo, left_shoulder, shoulder_center, "#afafaf");
 
   connect_joints (cairo, left_shoulder, left_elbow, "#afafaf");
+
+  connect_joints (cairo, right_shoulder, shoulder_center, "#afafaf");
 
   connect_joints (cairo, right_shoulder, right_elbow, "#afafaf");
 
