@@ -83,6 +83,7 @@
 #define DEFAULT_FOCUS_POINT_Z 1000
 #define TORSO_MINIMUM_NUMBER_NODES_DEFAULT 16.0
 #define EXTREMA_SPHERE_RADIUS 300
+#define CHEST_FACTOR 2.75
 
 /* private data */
 struct _SkeltrackSkeletonPrivate
@@ -1754,8 +1755,8 @@ track_joints (SkeltrackSkeleton *self)
 
           gfloat angle = get_angle_between_nodes (shoulder_center, centroid);
           gfloat dist = (gfloat) get_distance (shoulder_center, head);
-          center->x = shoulder_center->x + sin (angle) * 2.5 * dist;
-          center->y = shoulder_center->y + cos (angle) * 2.5 * dist;
+          center->x = shoulder_center->x + sin (angle) * CHEST_FACTOR * dist;
+          center->y = shoulder_center->y + cos (angle) * CHEST_FACTOR * dist;
           center->z = shoulder_center->z;
           convert_mm_to_screen_coords (self->priv->buffer_width,
                                        self->priv->buffer_height,
