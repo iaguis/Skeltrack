@@ -1157,6 +1157,9 @@ get_extremas (SkeltrackSkeleton *self, Node *centroid)
   return extremas;
 }
 
+/* TODO create a more general method
+   - IDEA: Don't set a maximum arc_length for hips
+*/
 static Node *
 get_shoulder_node (SkeltrackSkeletonPrivate *priv,
                    gfloat alpha,
@@ -1239,6 +1242,7 @@ check_if_node_can_be_head (SkeltrackSkeleton *self,
   if (node->j > centroid->j)
     return FALSE;
 
+  /* TODO generalize with get_angle_between_nodes? */
   if ((node->y - centroid->y) != 0)
     alpha = atan( ABS (node->x - centroid->x) / ABS (node->y - centroid->y));
   else
@@ -1306,6 +1310,7 @@ get_head_and_shoulders (SkeltrackSkeleton *self,
   return FALSE;
 }
 
+/* TODO generalize to arms and legs */
 static void
 identify_arm_extrema (gint *distances,
                       Node **previous_nodes,
@@ -1343,6 +1348,7 @@ identify_arm_extrema (gint *distances,
     }
 }
 
+/* TODO generalize to arms and legs */
 static void
 set_left_and_right_from_extremas (SkeltrackSkeleton *self,
                                   GList *extremas,
@@ -1628,6 +1634,8 @@ track_joints (SkeltrackSkeleton *self)
   Node *right_shoulder = NULL;
   Node *left_shoulder = NULL;
   Node *shoulder_center = NULL;
+  Node *right_hip = NULL;
+  Node *left_hip = NULL;
   /* Node *lowest = NULL; */
   GList *extremas;
   SkeltrackJointList joints = NULL;
@@ -1743,7 +1751,7 @@ track_joints (SkeltrackSkeleton *self)
 
       if (head && shoulder_center)
         {
-          Node *center = g_slice_new (Node);
+          Node *virtual_center = g_slice_new (Node);
           convert_mm_to_screen_coords (self->priv->buffer_width,
                                        self->priv->buffer_height,
                                        self->priv->dimension_reduction,
@@ -1755,21 +1763,67 @@ track_joints (SkeltrackSkeleton *self)
 
           gfloat angle = get_angle_between_nodes (shoulder_center, centroid);
           gfloat dist = (gfloat) get_distance (shoulder_center, head);
-          center->x = shoulder_center->x + sin (angle) * CHEST_FACTOR * dist;
-          center->y = shoulder_center->y + cos (angle) * CHEST_FACTOR * dist;
-          center->z = shoulder_center->z;
+          virtual_center->x = shoulder_center->x + sin (angle) * CHEST_FACTOR * dist;
+          virtual_center->y = shoulder_center->y + cos (angle) * CHEST_FACTOR * dist;
+          virtual_center->z = shoulder_center->z;
           convert_mm_to_screen_coords (self->priv->buffer_width,
                                        self->priv->buffer_height,
                                        self->priv->dimension_reduction,
-                                       center->x,
-                                       center->y,
-                                       center->z,
-                                       (guint *) &center->i,
-                                       (guint *) &center->j);
+                                       virtual_center->x,
+                                       virtual_center->y,
+                                       virtual_center->z,
+                                       (guint *) &virtual_center->i,
+                                       (guint *) &virtual_center->j);
+
+          right_hip = get_shoulder_node (self->priv,
+                                         angle,
+                                         self->priv->shoulders_search_step,
+                                         virtual_center->x,
+                                         virtual_center->y,
+                                         virtual_center->z);
+
+          left_hip = get_shoulder_node (self->priv,
+                                        angle,
+                                        -self->priv->shoulders_search_step,
+                                        virtual_center->x,
+                                        virtual_center->y,
+                                        virtual_center->z);
+
+          Node *center;
+          if (left_hip && right_hip)
+            {
+              center = g_slice_new (Node);
+
+              center->x = right_hip->x + (left_hip->x - right_hip->x)/2.f;
+              center->y = virtual_center->y;
+              center->z = virtual_center->z;
+              convert_mm_to_screen_coords (self->priv->buffer_width,
+                                           self->priv->buffer_height,
+                                           self->priv->dimension_reduction,
+                                           center->x,
+                                           center->y,
+                                           center->z,
+                                           (guint *) &center->i,
+                                           (guint *) &center->j);
+            }
+          else
+            {
+              center = virtual_center;
+            }
 
           set_joint_from_node (&joints,
                                center,
                                SKELTRACK_JOINT_ID_CENTER,
+                               self->priv->dimension_reduction);
+
+          set_joint_from_node (&joints,
+                               right_hip,
+                               SKELTRACK_JOINT_ID_RIGHT_HIP,
+                               self->priv->dimension_reduction);
+
+          set_joint_from_node (&joints,
+                               left_hip,
+                               SKELTRACK_JOINT_ID_LEFT_HIP,
                                self->priv->dimension_reduction);
         }
 
