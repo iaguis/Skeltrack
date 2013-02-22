@@ -77,6 +77,7 @@
 #define SHOULDERS_ARC_START_POINT 100
 #define SHOULDERS_ARC_LENGTH 250
 #define SHOULDERS_SEARCH_STEP 0.05
+#define HIPS_SEARCH_STEP 10
 #define JOINTS_PERSISTENCY_DEFAULT 3
 #define SMOOTHING_FACTOR_DEFAULT .5
 #define ENABLE_SMOOTHING_DEFAULT TRUE
@@ -111,6 +112,7 @@ struct _SkeltrackSkeletonPrivate
   guint16 shoulders_arc_start_point;
   guint16 shoulders_arc_length;
   gfloat shoulders_search_step;
+  gfloat hips_search_step;
 
   guint16 extrema_sphere_radius;
 
@@ -139,6 +141,7 @@ enum
     PROP_SHOULDERS_ARC_START_POINT,
     PROP_SHOULDERS_ARC_LENGTH,
     PROP_SHOULDERS_SEARCH_STEP,
+    PROP_HIPS_SEARCH_STEP,
     PROP_EXTREMA_SPHERE_RADIUS,
     PROP_SMOOTHING_FACTOR,
     PROP_JOINTS_PERSISTENCY,
@@ -321,6 +324,24 @@ skeltrack_skeleton_class_init (SkeltrackSkeletonClass *class)
   /**
    * SkeltrackSkeleton:shoulders-search-step:
    *
+   * The step considered for sampling the hips' line
+   * when searching for the hips.
+   **/
+  g_object_class_install_property (obj_class,
+                         PROP_HIPS_SEARCH_STEP,
+                         g_param_spec_float ("hips-search-step",
+                                             "Hips' search step",
+                                             "The step considered for sampling "
+                                             "the hips' line"
+                                             "when searching for the hips.",
+                                             1,
+                                             200,
+                                             1,
+                                             G_PARAM_READWRITE |
+                                             G_PARAM_STATIC_STRINGS));
+  /**
+   * SkeltrackSkeleton:shoulders-search-step:
+   *
    * The step considered for sampling the shoulders' circumference
    * when searching for the shoulders.
    **/
@@ -469,6 +490,7 @@ skeltrack_skeleton_init (SkeltrackSkeleton *self)
   priv->shoulders_arc_start_point = SHOULDERS_ARC_START_POINT;
   priv->shoulders_arc_length = SHOULDERS_ARC_LENGTH;
   priv->shoulders_search_step = SHOULDERS_SEARCH_STEP;
+  priv->hips_search_step = HIPS_SEARCH_STEP;
 
   priv->extrema_sphere_radius = EXTREMA_SPHERE_RADIUS;
 
@@ -565,6 +587,10 @@ skeltrack_skeleton_set_property (GObject      *obj,
       self->priv->shoulders_search_step = g_value_get_float (value);
       break;
 
+    case PROP_HIPS_SEARCH_STEP:
+      self->priv->hips_search_step = g_value_get_float (value);
+      break;
+
     case PROP_EXTREMA_SPHERE_RADIUS:
       self->priv->extrema_sphere_radius = g_value_get_uint (value);
       break;
@@ -634,6 +660,10 @@ skeltrack_skeleton_get_property (GObject    *obj,
 
     case PROP_SHOULDERS_SEARCH_STEP:
       g_value_set_float (value, self->priv->shoulders_search_step);
+      break;
+
+    case PROP_HIPS_SEARCH_STEP:
+      g_value_set_float (value, self->priv->hips_search_step);
       break;
 
     case PROP_EXTREMA_SPHERE_RADIUS:
@@ -1157,9 +1187,6 @@ get_extremas (SkeltrackSkeleton *self, Node *centroid)
   return extremas;
 }
 
-/* TODO create a more general method
-   - IDEA: Don't set a maximum arc_length for hips
-*/
 static Node *
 get_shoulder_node (SkeltrackSkeletonPrivate *priv,
                    gfloat alpha,
@@ -1221,6 +1248,50 @@ get_shoulder_node (SkeltrackSkeletonPrivate *priv,
 
   return last_node;
 }
+
+static Node *
+get_hip_node (SkeltrackSkeletonPrivate *priv,
+              gfloat step,
+              Node *centroid)
+{
+  guint current_i, current_j;
+  gfloat current_x;
+  Node *current_node = NULL;
+  Node *last_node = NULL;
+
+  current_node = centroid;
+  last_node = NULL;
+
+  current_x = centroid->x;
+
+  while (current_node)
+    {
+      convert_mm_to_screen_coords (priv->buffer_width,
+                                   priv->buffer_height,
+                                   priv->dimension_reduction,
+                                   current_x,
+                                   centroid->y,
+                                   centroid->z,
+                                   &current_i,
+                                   &current_j);
+
+      if (current_i >= priv->buffer_width || current_j >= priv->buffer_height)
+        break;
+
+      current_node = priv->node_matrix[current_j * priv->buffer_width +
+                                       current_i];
+
+      if (current_node != NULL)
+        {
+          last_node = current_node;
+        }
+
+      current_x += step;
+    }
+
+  return last_node;
+}
+
 
 static gboolean
 check_if_node_can_be_head (SkeltrackSkeleton *self,
@@ -1775,19 +1846,13 @@ track_joints (SkeltrackSkeleton *self)
                                        (guint *) &virtual_center->i,
                                        (guint *) &virtual_center->j);
 
-          right_hip = get_shoulder_node (self->priv,
-                                         angle,
-                                         self->priv->shoulders_search_step,
-                                         virtual_center->x,
-                                         virtual_center->y,
-                                         virtual_center->z);
+          right_hip = get_hip_node (self->priv,
+                                    self->priv->hips_search_step,
+                                    virtual_center);
 
-          left_hip = get_shoulder_node (self->priv,
-                                        angle,
-                                        -self->priv->shoulders_search_step,
-                                        virtual_center->x,
-                                        virtual_center->y,
-                                        virtual_center->z);
+          left_hip = get_hip_node (self->priv,
+                                   -self->priv->hips_search_step,
+                                   virtual_center);
 
           Node *center;
           if (left_hip && right_hip)
