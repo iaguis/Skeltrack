@@ -1284,6 +1284,25 @@ get_hip_node (SkeltrackSkeletonPrivate *priv,
       if (current_node != NULL)
         {
           last_node = current_node;
+          // cut lower nodes
+          /* TODO move this to a function */
+          GList *current_neighbor;
+          Node *n;
+
+          for (current_neighbor = g_list_first (last_node->neighbors);
+               current_neighbor != NULL;
+               current_neighbor = g_list_next (current_neighbor))
+            {
+              n = (Node *) current_neighbor->data;
+              if (n->i > current_i)
+                {
+                  n->neighbors = g_list_remove (n->neighbors, last_node);
+                  // FIXME: ANDREA, BE CAREFUL!
+                  last_node->neighbors = g_list_remove (last_node->neighbors,
+                                                        n);
+                }
+            }
+
         }
 
       current_x += step;
