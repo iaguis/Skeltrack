@@ -61,6 +61,8 @@
 #include <math.h>
 #include <stdlib.h>
 
+#include <glib/gprintf.h>
+
 #include "skeltrack-skeleton.h"
 #include "skeltrack-smooth.h"
 #include "skeltrack-util.h"
@@ -101,6 +103,7 @@ struct _SkeltrackSkeletonPrivate
   Node **node_matrix;
   gint  *distances_matrix;
   GList *main_component;
+  Node *source_feet;
 
   guint16 dimension_reduction;
   guint16 distance_threshold;
@@ -1051,6 +1054,16 @@ get_longer_distance (SkeltrackSkeleton *self, gint *distances)
   farthest_node = (Node *) current->data;
   current = g_list_next (current);
 
+  /* Partial graph case */
+  if (distances[farthest_node->j *
+                self->priv->buffer_width +
+                farthest_node->i] == -1)
+    {
+      distances[farthest_node->j *
+                self->priv->buffer_width +
+                farthest_node->i] = 0;
+    }
+
   while (current != NULL)
     {
       Node *node;
@@ -1258,13 +1271,25 @@ get_hip_node (SkeltrackSkeletonPrivate *priv,
   gfloat current_x;
   Node *current_node = NULL;
   Node *last_node = NULL;
+  Node *hip_node = NULL;
 
   current_node = centroid;
   last_node = NULL;
 
   current_x = centroid->x;
 
-  while (current_node)
+  convert_mm_to_screen_coords (priv->buffer_width,
+                                   priv->buffer_height,
+                                   priv->dimension_reduction,
+                                   current_x,
+                                   centroid->y,
+                                   centroid->z,
+                                   &current_i,
+                                   &current_j);
+
+  /* FIXME is this the right place? */
+  priv->source_feet = NULL;
+  while (current_i < priv->buffer_width && current_i > 0)
     {
       convert_mm_to_screen_coords (priv->buffer_width,
                                    priv->buffer_height,
@@ -1294,21 +1319,34 @@ get_hip_node (SkeltrackSkeletonPrivate *priv,
                current_neighbor = g_list_next (current_neighbor))
             {
               n = (Node *) current_neighbor->data;
-              if (n->i > current_i)
+              if (n->j > current_j)
                 {
+                  if (priv->source_feet == NULL)
+                    {
+                      priv->source_feet = n;
+                    }
                   n->neighbors = g_list_remove (n->neighbors, last_node);
-                  // FIXME: ANDREA, BE CAREFUL!
+                  /* FIXME: REMOVING WHILE ITERATING
                   last_node->neighbors = g_list_remove (last_node->neighbors,
                                                         n);
+                                                        */
                 }
             }
-
         }
 
       current_x += step;
+
+      if (current_node == NULL && hip_node == NULL)
+        hip_node = last_node;
+    }
+  /* FIXME ugly hack */
+  if (priv->source_feet == NULL)
+    {
+      g_printf ("\n\n\n **** HACK HACK HACKY HACK ****\n\n\n");
+      priv->source_feet = centroid;
     }
 
-  return last_node;
+  return hip_node;
 }
 
 
@@ -1839,6 +1877,8 @@ track_joints (SkeltrackSkeleton *self)
                                self->priv->dimension_reduction);
         }
 
+      /* WIP lower extremas
+       * refactor? */
       if (head && shoulder_center)
         {
           Node *virtual_center = g_slice_new (Node);
@@ -1930,6 +1970,18 @@ track_joints (SkeltrackSkeleton *self)
                   feet[m] = node;
                 }
             }
+
+       /*   gint i, j;
+
+          for (i=0; i<self->priv->buffer_height; i++)
+            {
+              for (j=0; j<self->priv->buffer_width; j++)
+                {
+                  g_printf ("%d\t", dist_feet[self->priv->buffer_width * i + j]);
+                }
+              g_printf("\n\n");
+            }
+            */
 
           g_slice_free1 (matrix_size * sizeof (gint), dist_feet);
 
