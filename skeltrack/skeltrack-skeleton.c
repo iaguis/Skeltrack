@@ -1895,6 +1895,44 @@ track_joints (SkeltrackSkeleton *self)
               center = virtual_center;
             }
 
+          Node *feet[2];
+
+          SkeltrackSkeletonPrivate *priv;
+
+          priv = self->priv;
+
+          gint *dist_feet;
+          gint matrix_size = priv->buffer_width * priv->buffer_height;
+
+          dist_feet = create_new_dist_matrix(matrix_size);
+
+          Node *source = priv->source_feet;
+
+          Node *node;
+
+          gint m;
+          for (m=0; m<2; m++)
+            {
+              dijkstra_to (priv->graph,
+                           source,
+                           NULL,
+                           priv->buffer_width,
+                           priv->buffer_height,
+                           dist_feet,
+                           NULL);
+
+              node = get_longer_distance (self, dist_feet);
+
+              if (node != source)
+                {
+                  dist_feet[node->j * priv->buffer_width + node->i] = 0;
+                  source = node;
+                  feet[m] = node;
+                }
+            }
+
+          g_slice_free1 (matrix_size * sizeof (gint), dist_feet);
+
           set_joint_from_node (&joints,
                                center,
                                SKELTRACK_JOINT_ID_CENTER,
@@ -1909,6 +1947,17 @@ track_joints (SkeltrackSkeleton *self)
                                left_hip,
                                SKELTRACK_JOINT_ID_LEFT_HIP,
                                self->priv->dimension_reduction);
+
+          set_joint_from_node (&joints,
+                               feet[0],
+                               SKELTRACK_JOINT_ID_LEFT_FOOT,
+                               self->priv->dimension_reduction);
+
+          set_joint_from_node (&joints,
+                               feet[1],
+                               SKELTRACK_JOINT_ID_RIGHT_FOOT,
+                               self->priv->dimension_reduction);
+
         }
 
     }

@@ -29,7 +29,7 @@
 G_BEGIN_DECLS
 
 #define SKELTRACK_TYPE_JOINT (skeltrack_joint_get_type ())
-#define SKELTRACK_JOINT_MAX_JOINTS 11
+#define SKELTRACK_JOINT_MAX_JOINTS 13
 
 typedef struct _SkeltrackJoint SkeltrackJoint;
 typedef SkeltrackJoint **SkeltrackJointList;
@@ -58,7 +58,9 @@ typedef enum {
   SKELTRACK_JOINT_ID_SHOULDER_CENTER,
   SKELTRACK_JOINT_ID_CENTER,
   SKELTRACK_JOINT_ID_RIGHT_HIP,
-  SKELTRACK_JOINT_ID_LEFT_HIP
+  SKELTRACK_JOINT_ID_LEFT_HIP,
+  SKELTRACK_JOINT_ID_RIGHT_FOOT,
+  SKELTRACK_JOINT_ID_LEFT_FOOT
 } SkeltrackJointId;
 
 /**
