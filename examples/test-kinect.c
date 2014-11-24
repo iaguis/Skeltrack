@@ -30,7 +30,7 @@ static guint THRESHOLD_END   = 8000;
 static gint width = 640;
 static gint height = 480;
 
-static gboolean VERTICAL = FALSE;
+static gboolean VERTICAL = TRUE;
 
 typedef struct
 {
